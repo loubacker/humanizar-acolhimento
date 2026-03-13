@@ -1,0 +1,83 @@
+spring:
+  application:
+    name: humanizar-acolhimento
+  config:
+    import:
+      - optional:file:.env[.properties]
+
+  # Configuração de Threads
+  threads:
+    virtual:
+      enabled: true
+
+  # Configurações de OAuth2 Resource Server JWT
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVER_URL}/oauth2/jwks
+
+  # Configurações do RabbitMQ
+  rabbitmq:
+    addresses: ${RABBITMQ_URL}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+      retry:
+        enabled: false
+    listener:
+      simple:
+        default-requeue-rejected: false
+        prefetch: 20
+        concurrency: 2
+        max-concurrency: 8
+
+  # Configurações de DataBase
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    initialization-mode: always
+    hikari:
+      pool-name: humanizar-acolhimento-pool
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      minimum-idle: 3
+      maximum-pool-size: 10
+
+  # Configurações de Migrations
+  sql:
+    init:
+      mode: always
+
+  # Configurações de JPA com Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        "[format_sql]": false
+    generate-ddl: true
+    open-in-view: false
+
+# Server
+server:
+  port: 9099
+
+# Configuração do Actuator (Health Check)
+management:
+  health:
+      mail:
+        enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+      cache:
+        time-to-live: 60s
