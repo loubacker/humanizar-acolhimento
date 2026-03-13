@@ -11,57 +11,39 @@
 
 <br/>
 
-Servico orientado a EDA com API HTTP interna protegida. Processa comandos de acolhimento, persiste estado local, publica comandos via outbox transacional e finaliza pendencias via callback do `humanizar-nucleo-relacionamento`.
+Serviço orientado a EDA, com API HTTP interna protegida. Processa comandos de acolhimento, persiste estado local, publica comandos via outbox transacional e finaliza pendências por meio de callback do `humanizar-nucleo-relacionamento`.
 
-## Arquitetura e Patterns
+## Arquitetura e Padrões
 
-- Hexagonal architecture (`application`, `domain`, `infrastructure`).
-- Envelope inbound obrigatorio para operacoes mutaveis (`InboundEnvelopeDTO<T>`).
-- Outbox transacional para publicacao confiavel de comandos RabbitMQ.
-- Controle de consistencia eventual com `pending_acolhimento` e `pending_target_status`.
-- Callback inbound com idempotencia por `processed_event`.
-- ACK/NACK manual do RabbitMQ com politica explicita por tipo de erro.
-- Execucao otimizada com Virtual Threads e opcao de runtime em binario nativo (GraalVM Native Image).
+- Arquitetura Hexagonal (`application`, `domain`, `infrastructure`).
+- Envelope inbound obrigatório para operações mutáveis (`InboundEnvelopeDTO<T>`).
+- Outbox transacional para publicação confiável de comandos RabbitMQ.
+- Controle de consistência eventual com `pending_acolhimento` e `pending_target_status`.
+- Callback inbound com idempotência por `processed_event`.
+- ACK/NACK manual do RabbitMQ com política explícita por tipo de erro.
+- Execução otimizada com Virtual Threads e opção de runtime em binário nativo (GraalVM Native Image).
 
 ## Interfaces internas protegidas (REST)
 
 Base path: `/api/v1/acolhimento`
 
 - `POST /register`
-  - cria acolhimento e gera comando outbound `cmd.acolhimento.created.v1`.
-  - body obrigatorio: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
+    - Cria acolhimento e gera o comando outbound `cmd.acolhimento.created.v1`.
+    - Body obrigatório: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
 - `PUT /update/{patientId}`
-  - atualiza acolhimento e gera comando outbound `cmd.acolhimento.updated.v1`.
-  - body obrigatorio: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
-  - regra obrigatoria: `path.patientId == payload.patientId`.
+    - Atualiza acolhimento e gera o comando outbound `cmd.acolhimento.updated.v1`.
+    - Body obrigatório: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
+    - Regra obrigatória: `path.patientId == payload.patientId`.
 - `DELETE /delete/{patientId}`
-  - remove acolhimento e gera comando outbound `cmd.acolhimento.deleted.v1`.
-  - body obrigatorio: `InboundEnvelopeDTO<AcolhimentoDeleteDTO>`.
-  - regra obrigatoria: `path.patientId == payload.patientId`.
+    - Remove acolhimento e gera o comando outbound `cmd.acolhimento.deleted.v1`.
+    - Body obrigatório: `InboundEnvelopeDTO<AcolhimentoDeleteDTO>`.
+    - Regra obrigatória: `path.patientId == payload.patientId`.
 - `GET /{patientId}`
-  - retorna dados do acolhimento atual do paciente.
+    - Retorna os dados atuais do acolhimento do paciente.
 
-## Contrato inbound (envelope)
+## 🔄 Comunicação Assíncrona (RabbitMQ)
 
-Shape canonico do `InboundEnvelopeDTO<T>`:
-
-```json
-{
-  "correlationId": "uuid",
-  "producerService": "humanizar-service",
-  "occurredAt": "2026-03-13T01:30:00",
-  "actorId": "uuid",
-  "userAgent": "Mozilla/5.0 ...",
-  "originIp": "::1",
-  "payload": {}
-}
-```
-
-Nos fluxos `PUT` e `DELETE`, `payload.patientId` precisa ser igual ao `{patientId}` da URL.
-
-## Comunicacao assincrona (RabbitMQ)
-
-### Outbound command (produz via outbox)
+### Outbound
 
 **Exchange `humanizar.acolhimento.command`**
 - `cmd.acolhimento.created.v1`
@@ -70,7 +52,7 @@ Nos fluxos `PUT` e `DELETE`, `payload.patientId` precisa ser igual ao `{patientI
 
 Contrato publicado: `OutboundEnvelopeDTO<T>` (metadados EDA + payload tipado).
 
-### Inbound callback (consome)
+### Inbound
 
 **Exchange `humanizar.acolhimento.event`**
 - `ev.acolhimento.nucleo-relacionamento.processed.v1`
@@ -82,20 +64,20 @@ Fila principal:
 DLQ:
 - `callback.acolhimento.nucleo-relacionamento.dlq`
 
-Contrato consumido: `CallbackDTO`
+Contrato consumido: `CallbackDTO`.
 
-## ⛓️‍💥 Resiliencia e Tolerancia a Falhas
+## ⛓️‍💥 Resiliência e Tolerância a Falhas
 
 ### ACK/NACK manual
 
-`rabbitListenerContainerFactory` roda com `AcknowledgeMode.MANUAL` (config Java).
+`rabbitListenerContainerFactory` roda com `AcknowledgeMode.MANUAL` (configuração Java).
 
-Politica no callback inbound:
+Política no callback inbound:
 - `ack`: sucesso e evento duplicado.
-- `nackRetry` (`requeue=true`): erro retentavel.
-- `nackDeadLetter` (`requeue=false`): parse invalido e erro nao retentavel.
+- `nackRetry` (`requeue=true`): erro retentável.
+- `nackDeadLetter` (`requeue=false`): parse inválido e erro não retentável.
 
-Implementacao central: `RabbitAcknowledgementConfig`.
+Implementação central: `RabbitAcknowledgementConfig`.
 
 ### Outbox states
 
@@ -107,11 +89,11 @@ Implementacao central: `RabbitAcknowledgementConfig`.
 
 Com retentativa por `OutboxRetryPolicy` e controle de ownership/fencing por `instanceId`.
 
-## 🔐 Seguranca
+## 🔐 Segurança
 
 - API interna protegida por OAuth2 Resource Server JWT.
 - JWK configurado por `AUTH_SERVER_URL`.
-- Sem exposicao de endpoint publico para uso externo.
+- Sem exposição de endpoint público para uso externo.
 
 ## Estrutura do projeto
 
@@ -126,15 +108,13 @@ src/main/java/com/humanizar/acolhimento/
 `-- infrastructure/                 # adapters, controllers, rabbit, outbox, persistence
 ```
 
-## Como executar localmente
-
-### Pre-requisitos
+### Pré-requisitos
 - JDK 25
 - Maven 3.9+
 - PostgreSQL
 - RabbitMQ
 
-### Variaveis de ambiente (`.env`)
+### Variáveis de Ambiente (`.env`)
 
 ```env
 DB_URL=jdbc:postgresql://localhost:5432/humanizar_acolhimento
@@ -144,7 +124,7 @@ RABBITMQ_URL=amqp://admin:admin@localhost:5672
 AUTH_SERVER_URL=http://localhost:8080
 ```
 
-### Execucao local (JVM)
+### Execução local (JVM)
 
 ```bash
 ./mvnw clean install -DskipTests
@@ -156,7 +136,7 @@ Health check: `http://localhost:9099/actuator/health`
 
 ## 🐳 Docker Native (GraalVM)
 
-O Dockerfile do modulo usa build multi-stage com GraalVM Native Image:
+O Dockerfile do módulo usa build multi-stage com GraalVM Native Image:
 
 1. Build stage (`ghcr.io/graalvm/native-image-community:25`) compila com:
    - `./mvnw -Pnative -DskipTests native:compile`
