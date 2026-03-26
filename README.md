@@ -138,7 +138,7 @@ src/main/java/com/humanizar/acolhimento/
 ### Variáveis de Ambiente (`.env`)
 
 ```env
-DB_URL=jdbc:postgresql://localhost:5432/humanizar_acolhimento
+DB_URL=jdbc:postgresql://localhost:5432/db
 DB_USERNAME=postgres
 DB_PASSWORD=secret
 RABBITMQ_URL=amqp://admin:admin@localhost:5672
