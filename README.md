@@ -3,7 +3,7 @@
   <p>API interna protegida para o fluxo de acolhimento do paciente no ecossistema Humanizar.</p>
 
   <img alt="Java" src="https://img.shields.io/badge/Java-25-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" />
-  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring_Boot-4.0.3-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" />
+  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring_Boot-4.0.4-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" />
   <img alt="GraalVM" src="https://img.shields.io/badge/GraalVM_Native-25-E76F00?style=for-the-badge&logo=oracle&logoColor=white" />
   <img alt="RabbitMQ" src="https://img.shields.io/badge/RabbitMQ-%23FF6600.svg?style=for-the-badge&logo=rabbitmq&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
@@ -11,7 +11,7 @@
 
 <br/>
 
-Serviço orientado a EDA, com API HTTP interna protegida. Processa comandos de acolhimento, persiste estado local, publica comandos via outbox transacional e finaliza pendências por meio de callback do `humanizar-nucleo-relacionamento`.
+Serviço orientado a EDA, com API HTTP interna protegida. Processa comandos de acolhimento, persiste estado local, publica comandos via outbox transacional e finaliza pendências por meio de callbacks do `humanizar-nucleo-relacionamento` e `humanizar-programa-atendimento`.
 
 ## Arquitetura e Padrões
 
@@ -40,6 +40,7 @@ Base path: `/api/v1/acolhimento`
     - Regra obrigatória: `path.patientId == payload.patientId`.
 - `GET /{patientId}`
     - Retorna os dados atuais do acolhimento do paciente.
+    - Retry automático em falhas transientes de banco (`@Retry`, max 2, timeout 30s).
 
 ## 🔄 Comunicação Assíncrona (RabbitMQ)
 
@@ -52,7 +53,7 @@ Base path: `/api/v1/acolhimento`
 
 Contrato publicado: `OutboundEnvelopeDTO<T>` (metadados EDA + payload tipado).
 
-### Inbound
+### Inbound — Callbacks do Núcleo de Relacionamento
 
 **Exchange `humanizar.acolhimento.event`**
 - `ev.acolhimento.nucleo-relacionamento.processed.v1`
@@ -64,7 +65,19 @@ Fila principal:
 DLQ:
 - `callback.acolhimento.nucleo-relacionamento.dlq`
 
-Contrato consumido: `CallbackDTO`.
+### Inbound — Callbacks do Programa de Atendimento
+
+**Exchange `humanizar.acolhimento.event`**
+- `ev.acolhimento.programa.processed.v1`
+- `ev.acolhimento.programa.rejected.v1`
+
+Fila principal:
+- `callback.acolhimento.programa`
+
+DLQ:
+- `callback.acolhimento.programa.dlq`
+
+Contrato consumido (ambos): `CallbackDTO`.
 
 ## ⛓️‍💥 Resiliência e Tolerância a Falhas
 
@@ -78,6 +91,13 @@ Política no callback inbound:
 - `nackDeadLetter` (`requeue=false`): parse inválido e erro não retentável.
 
 Implementação central: `RabbitAcknowledgementConfig`.
+
+### Retry transiente (endpoint GET)
+
+`@Retry` via `ResilientMethodsConfig` (Spring Framework 7 `@Retryable`).
+
+- Max retries: 2, timeout: 30s.
+- Predicate: `TransientDataAccessException`, `RecoverableDataAccessException`, `CannotCreateTransactionException`, `QueryTimeoutException`.
 
 ### Outbox states
 
@@ -100,6 +120,7 @@ Com retentativa por `OutboxRetryPolicy` e controle de ownership/fencing por `ins
 ```text
 src/main/java/com/humanizar/acolhimento/
 |-- application/
+|   |-- catalog/                    # ExchangeCatalog, QueueCatalog, RoutingKeyCatalog, TargetCatalog
 |   |-- inbound/                    # DTOs e mappers de envelope/payload
 |   |-- outbound/                   # DTOs e mappers de comando/callback
 |   |-- service/                    # orquestracao create/update/delete/retrieve/callback
