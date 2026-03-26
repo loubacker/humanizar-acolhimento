@@ -65,6 +65,7 @@ public class ProcessedEventAdapter implements ProcessedEventPort {
     }
 
     @Override
+    @Transactional
     public void deleteByProcessedAtBefore(LocalDateTime cutoff) {
         processedEventRepository.deleteByProcessedAtBefore(cutoff);
     }

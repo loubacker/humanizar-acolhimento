@@ -12,5 +12,9 @@ class QueueCatalogTest {
                 QueueCatalog.CALLBACK_ACOLHIMENTO_NUCLEO_RELACIONAMENTO);
         Assertions.assertEquals("callback.acolhimento.nucleo-relacionamento.dlq",
                 QueueCatalog.CALLBACK_ACOLHIMENTO_NUCLEO_RELACIONAMENTO_DLQ);
+        Assertions.assertEquals("callback.acolhimento.programa",
+                QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA);
+        Assertions.assertEquals("callback.acolhimento.programa.dlq",
+                QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA_DLQ);
     }
 }

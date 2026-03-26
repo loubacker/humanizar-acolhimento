@@ -18,10 +18,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
 import com.humanizar.acolhimento.domain.model.enums.Status;
@@ -32,8 +34,6 @@ import com.humanizar.acolhimento.infrastructure.messaging.outbound.rabbit.Rabbit
 
 @ExtendWith(MockitoExtension.class)
 class OutboxEventProcessorTest {
-
-    private static final String TARGET_NUCLEO_RELACIONAMENTO = "humanizar-nucleo-relacionamento";
 
     @Mock
     private OutboxEventPort outboxEventPort;
@@ -51,7 +51,7 @@ class OutboxEventProcessorTest {
     private OutboxEventProcessor outboxEventProcessor;
 
     @Captor
-    private ArgumentCaptor<List<PendingTargetStatus>> pendingTargetListCaptor;
+    private ArgumentCaptor<PendingTargetStatus> pendingTargetCaptor;
 
     @Test
     void shouldClaimAndLockEventsFromOutbox() {
@@ -79,11 +79,13 @@ class OutboxEventProcessorTest {
         outboxEventProcessor.processEvent(event);
 
         verify(rabbitOutboxPublisher).publish(event);
-        verify(pendingTargetStatusPort).saveAll(pendingTargetListCaptor.capture());
-        List<PendingTargetStatus> savedTargets = pendingTargetListCaptor.getValue();
-        assertEquals(1, savedTargets.size());
-        assertEquals(TARGET_NUCLEO_RELACIONAMENTO, savedTargets.getFirst().getTargetService());
+        verify(pendingTargetStatusPort, times(2)).save(pendingTargetCaptor.capture());
+        List<PendingTargetStatus> savedTargets = pendingTargetCaptor.getAllValues();
+        assertEquals(2, savedTargets.size());
+        assertEquals(TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, savedTargets.getFirst().getTargetService());
         assertEquals(Status.PENDING, savedTargets.getFirst().getStatus());
+        assertEquals(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, savedTargets.get(1).getTargetService());
+        assertEquals(Status.PENDING, savedTargets.get(1).getStatus());
 
         assertEquals(OutboxStatus.PUBLISHED, event.getStatus());
         assertNotNull(event.getPublishedAt());
@@ -115,17 +117,38 @@ class OutboxEventProcessorTest {
     }
 
     @Test
-    void shouldNotCreatePendingTargetWhenAlreadyExists() {
+    void shouldNotCreatePendingTargetsWhenAllAlreadyExist() {
         OutboxEvent event = claimOneEvent();
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of(
-                new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING)));
+                new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING),
+                new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, Status.PENDING)));
 
         outboxEventProcessor.processEvent(event);
 
         verify(rabbitOutboxPublisher).publish(event);
-        verify(pendingTargetStatusPort, never()).saveAll(anyList());
+        verify(pendingTargetStatusPort, never()).save(any(PendingTargetStatus.class));
+        assertEquals(OutboxStatus.PUBLISHED, event.getStatus());
+    }
+
+    @Test
+    void shouldCreateMissingPendingTargetWhenOnlyOneExists() {
+        OutboxEvent event = claimOneEvent();
+        when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
+        when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of(
+                new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING)));
+
+        outboxEventProcessor.processEvent(event);
+
+        verify(rabbitOutboxPublisher).publish(event);
+        verify(pendingTargetStatusPort).save(pendingTargetCaptor.capture());
+        PendingTargetStatus savedTarget = pendingTargetCaptor.getValue();
+        List<PendingTargetStatus> savedTargets = List.of(savedTarget);
+        assertEquals(1, savedTargets.size());
+        assertEquals(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, savedTargets.getFirst().getTargetService());
+        assertEquals(Status.PENDING, savedTargets.getFirst().getStatus());
         assertEquals(OutboxStatus.PUBLISHED, event.getStatus());
     }
 

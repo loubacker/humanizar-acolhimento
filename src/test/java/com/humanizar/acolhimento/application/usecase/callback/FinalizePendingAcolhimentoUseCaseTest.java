@@ -16,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
@@ -42,7 +43,7 @@ class FinalizePendingAcolhimentoUseCaseTest {
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(pending));
         when(pendingTargetStatusPort.findByEventId(eventId))
                 .thenReturn(List.of(new PendingTargetStatus(UUID.randomUUID(), eventId,
-                        "humanizar-nucleo-relacionamento", Status.SUCCESS)));
+                        TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.SUCCESS)));
 
         useCase.execute(eventId);
 
@@ -58,9 +59,9 @@ class FinalizePendingAcolhimentoUseCaseTest {
         when(pendingTargetStatusPort.findByEventId(eventId))
                 .thenReturn(List.of(
                         new PendingTargetStatus(UUID.randomUUID(), eventId,
-                                "humanizar-nucleo-relacionamento", Status.SUCCESS),
+                                TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.SUCCESS),
                         new PendingTargetStatus(UUID.randomUUID(), eventId,
-                                "humanizar-programa-atendimento", Status.ERROR)));
+                                TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, Status.ERROR)));
 
         useCase.execute(eventId);
 
@@ -75,7 +76,7 @@ class FinalizePendingAcolhimentoUseCaseTest {
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(pending));
         when(pendingTargetStatusPort.findByEventId(eventId))
                 .thenReturn(List.of(new PendingTargetStatus(UUID.randomUUID(), eventId,
-                        "humanizar-nucleo-relacionamento", Status.PENDING)));
+                        TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING)));
 
         useCase.execute(eventId);
 

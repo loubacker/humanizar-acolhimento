@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoRetrieveService;
+import com.humanizar.acolhimento.infrastructure.config.ResilientMethodsConfig.Retry;
 
 @RestController
 @RequestMapping("/api/v1/acolhimento")
@@ -25,6 +26,7 @@ public class AcolhimentoRetrieveController {
         this.acolhimentoRetrieveService = acolhimentoRetrieveService;
     }
 
+    @Retry
     @GetMapping("/{patientId}")
     public ResponseEntity<InboundAcolhimentoDTO> retrieve(@PathVariable UUID patientId) {
         log.info("Recebido GET /api/v1/acolhimento/{}. operacao=RETRIEVE", patientId);

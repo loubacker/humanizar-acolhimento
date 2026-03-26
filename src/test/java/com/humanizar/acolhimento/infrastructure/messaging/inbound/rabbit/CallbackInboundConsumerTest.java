@@ -1,6 +1,7 @@
 package com.humanizar.acolhimento.infrastructure.messaging.inbound.rabbit;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,6 +19,8 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.humanizar.acolhimento.application.catalog.ConsumerCatalog;
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.application.outbound.CallbackDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoCallbackService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
@@ -149,11 +152,44 @@ class CallbackInboundConsumerTest {
         verify(channel, never()).basicAck(deliveryTag, false);
     }
 
+    @Test
+    void shouldRouteProgramaCallbackToProgramaTarget() throws IOException {
+        long deliveryTag = 16L;
+        CallbackDTO callback = callback("PROCESSED");
+        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+                .thenReturn(callback);
+
+        CallbackInboundConsumer consumer = new CallbackInboundConsumer(
+                objectMapper,
+                acolhimentoCallbackService,
+                new RabbitAcknowledgementConfig());
+
+        consumer.onProgramaAtendimentoCallback(
+                message(
+                        deliveryTag,
+                        "callback.acolhimento.programa",
+                        "ev.acolhimento.programa.processed.v1"),
+                channel);
+
+        verify(acolhimentoCallbackService).processCallback(
+                eq(ConsumerCatalog.CALLBACK_PROGRAMA_CONSUMER),
+                eq(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO),
+                eq(callback));
+        verify(channel).basicAck(deliveryTag, false);
+    }
+
     private Message message(long deliveryTag) {
+        return message(
+                deliveryTag,
+                "callback.acolhimento.nucleo-relacionamento",
+                "ev.acolhimento.nucleo-relacionamento.processed.v1");
+    }
+
+    private Message message(long deliveryTag, String consumerQueue, String receivedRoutingKey) {
         MessageProperties properties = new MessageProperties();
         properties.setDeliveryTag(deliveryTag);
-        properties.setConsumerQueue("callback.acolhimento.nucleo-relacionamento");
-        properties.setReceivedRoutingKey("ev.acolhimento.nucleo-relacionamento.processed.v1");
+        properties.setConsumerQueue(consumerQueue);
+        properties.setReceivedRoutingKey(receivedRoutingKey);
         properties.setMessageId(UUID.randomUUID().toString());
         return new Message("{}".getBytes(), properties);
     }

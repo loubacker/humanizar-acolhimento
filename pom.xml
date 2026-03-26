@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.3</version>
+		<version>4.0.4</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.humanizar</groupId>
@@ -18,7 +18,15 @@
 		<license/>
 	</licenses>
 	<developers>
-		<developer/>
+		<developer>
+			<id>gloubacker</id>
+			<name>Gabriel Loubacker</name>
+			<email>gabs@loubacker.dev</email>
+			<url>https://www.linkedin.com/in/gloubacker/</url>
+			<properties>
+				<phone>(79) 99693-2393</phone>
+			</properties>
+		</developer>
 	</developers>
 	<scm>
 		<connection/>
@@ -29,8 +37,8 @@
 
 	<properties>
         <java.version>25</java.version>
-		<spring-cloud.version>2025.1.0</spring-cloud.version>
-        <spring-boot.version>4.0.3</spring-boot.version>
+		<spring-cloud.version>2025.1.1</spring-cloud.version>
+        <spring-boot.version>4.0.4</spring-boot.version>
 	</properties>
 
 	<!-- Dependencias de Spring Cloud -->
@@ -99,13 +107,6 @@
 			<artifactId>jackson-datatype-jsr310</artifactId>
 		</dependency>
 
-		<!-- Dependencia do Dotenvx Spring Boot Starter -->
-		<dependency>
-			<groupId>org.mvnsearch</groupId>
-			<artifactId>dotenvx-spring-boot-starter</artifactId>
-			<version>0.1.4</version>
-		</dependency>
-
 		<!-- Dependência PostgreSQL -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
@@ -124,12 +125,6 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
 		</dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-			<version>4.0.0-M2</version>
-        </dependency>
 
 	</dependencies>
 
@@ -150,3 +145,4 @@
 	</build>
 
 </project>
+

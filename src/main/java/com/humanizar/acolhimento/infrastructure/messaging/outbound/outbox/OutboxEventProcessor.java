@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
 import com.humanizar.acolhimento.domain.model.enums.Status;
@@ -26,7 +27,6 @@ public class OutboxEventProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxEventProcessor.class);
     private static final Duration LOCK_TIMEOUT = Duration.ofMinutes(5);
-    private static final String TARGET_NUCLEO_RELACIONAMENTO = "humanizar-nucleo-relacionamento";
 
     private final UUID instanceId = UUID.randomUUID();
     private final OutboxEventPort outboxEventPort;
@@ -66,22 +66,20 @@ public class OutboxEventProcessor {
 
     @Transactional
     public void processEvent(OutboxEvent event) {
-        OutboxEvent fresh = outboxEventPort.findByEventId(event.getEventId()).orElse(null);
-        if (fresh == null
-                || fresh.getStatus() != OutboxStatus.LOCKED
-                || !instanceId.equals(fresh.getLockedBy())) {
+        OutboxEvent processingEvent = outboxEventPort.findByEventId(event.getEventId()).orElse(null);
+        if (processingEvent == null
+                || processingEvent.getStatus() != OutboxStatus.LOCKED
+                || !instanceId.equals(processingEvent.getLockedBy())) {
             log.warn("Fencing check falhou. eventId={}, expectedOwner={}, actualOwner={}",
                     event.getEventId(),
                     instanceId,
-                    fresh != null ? fresh.getLockedBy() : "N/A");
+                    processingEvent != null ? processingEvent.getLockedBy() : "N/A");
             return;
         }
 
-        OutboxEvent processingEvent = fresh;
-
         try {
             rabbitOutboxPublisher.publish(processingEvent);
-            createPendingTargetStatusIfAbsent(processingEvent.getEventId());
+            createMissingPendingTargets(processingEvent.getEventId());
 
             processingEvent.setStatus(OutboxStatus.PUBLISHED);
             processingEvent.setPublishedAt(LocalDateTime.now());
@@ -114,21 +112,26 @@ public class OutboxEventProcessor {
         }
     }
 
-    private void createPendingTargetStatusIfAbsent(UUID eventId) {
+    private void createMissingPendingTargets(UUID eventId) {
         List<PendingTargetStatus> existing = pendingTargetStatusPort.findByEventId(eventId);
         Set<String> existingTargets = existing.stream()
                 .map(PendingTargetStatus::getTargetService)
                 .collect(Collectors.toSet());
 
-        if (existingTargets.contains(TARGET_NUCLEO_RELACIONAMENTO)) {
-            return;
+        if (!existingTargets.contains(TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO)) {
+            pendingTargetStatusPort.save(new PendingTargetStatus(
+                    null,
+                    eventId,
+                    TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO,
+                    Status.PENDING));
         }
 
-        PendingTargetStatus pendingTarget = new PendingTargetStatus(
-                null,
-                eventId,
-                TARGET_NUCLEO_RELACIONAMENTO,
-                Status.PENDING);
-        pendingTargetStatusPort.saveAll(List.of(pendingTarget));
+        if (!existingTargets.contains(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO)) {
+            pendingTargetStatusPort.save(new PendingTargetStatus(
+                    null,
+                    eventId,
+                    TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO,
+                    Status.PENDING));
+        }
     }
 }

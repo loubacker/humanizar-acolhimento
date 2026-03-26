@@ -35,6 +35,17 @@ public class DeadLetterConsumer {
             queues = QueueCatalog.CALLBACK_ACOLHIMENTO_NUCLEO_RELACIONAMENTO_DLQ,
             containerFactory = "rabbitListenerContainerFactory")
     public void onDeadLetter(Message message, Channel channel) throws IOException {
+        onDeadLetterInternal(message, channel);
+    }
+
+    @RabbitListener(
+            queues = QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA_DLQ,
+            containerFactory = "rabbitListenerContainerFactory")
+    public void onProgramaAtendimentoDeadLetter(Message message, Channel channel) throws IOException {
+        onDeadLetterInternal(message, channel);
+    }
+
+    private void onDeadLetterInternal(Message message, Channel channel) throws IOException {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         String originalRoutingKey = extractOriginalRoutingKey(message);
         String queue = message.getMessageProperties().getConsumerQueue();

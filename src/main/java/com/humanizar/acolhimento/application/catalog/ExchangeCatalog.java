@@ -9,5 +9,6 @@ public final class ExchangeCatalog {
     public static final String ACOLHIMENTO_EVENT = "humanizar.acolhimento.event";
 
     private ExchangeCatalog() {
+
     }
 }

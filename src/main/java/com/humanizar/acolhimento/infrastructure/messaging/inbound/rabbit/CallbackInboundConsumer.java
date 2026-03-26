@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.humanizar.acolhimento.application.catalog.ConsumerCatalog;
 import com.humanizar.acolhimento.application.catalog.QueueCatalog;
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.application.outbound.CallbackDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoCallbackService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
@@ -22,7 +23,6 @@ import com.rabbitmq.client.Channel;
 public class CallbackInboundConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(CallbackInboundConsumer.class);
-    private static final String TARGET_NUCLEO_RELACIONAMENTO = "humanizar-nucleo-relacionamento";
 
     private final ObjectMapper objectMapper;
     private final AcolhimentoCallbackService acolhimentoCallbackService;
@@ -39,6 +39,27 @@ public class CallbackInboundConsumer {
 
     @RabbitListener(queues = QueueCatalog.CALLBACK_ACOLHIMENTO_NUCLEO_RELACIONAMENTO, containerFactory = "rabbitListenerContainerFactory")
     public void onNucleoRelacionamentoCallback(Message message, Channel channel) throws IOException {
+        onCallback(
+                message,
+                channel,
+                ConsumerCatalog.CALLBACK_NUCLEO_RELACIONAMENTO_CONSUMER,
+                TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO);
+    }
+
+    @RabbitListener(queues = QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA, containerFactory = "rabbitListenerContainerFactory")
+    public void onProgramaAtendimentoCallback(Message message, Channel channel) throws IOException {
+        onCallback(
+                message,
+                channel,
+                ConsumerCatalog.CALLBACK_PROGRAMA_CONSUMER,
+                TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO);
+    }
+
+    private void onCallback(
+            Message message,
+            Channel channel,
+            String consumerName,
+            String targetService) throws IOException {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         String queue = message.getMessageProperties().getConsumerQueue();
         String messageId = message.getMessageProperties().getMessageId();
@@ -61,8 +82,8 @@ public class CallbackInboundConsumer {
 
         try {
             acolhimentoCallbackService.processCallback(
-                    ConsumerCatalog.CALLBACK_NUCLEO_RELACIONAMENTO_CONSUMER,
-                    TARGET_NUCLEO_RELACIONAMENTO,
+                    consumerName,
+                    targetService,
                     callback);
             rabbitAcknowledgementConfig.ack(channel, deliveryTag, context);
         } catch (AcolhimentoException ex) {

@@ -75,6 +75,7 @@ public class OutboxEventAdapter implements OutboxEventPort {
     }
 
     @Override
+    @Transactional
     public void deleteByStatusAndCreatedAtBefore(OutboxStatus status, LocalDateTime cutoff) {
         outboxEventRepository.deleteByStatusAndCreatedAtBefore(status, cutoff);
     }

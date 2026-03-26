@@ -11,5 +11,8 @@ class ConsumerCatalogTest {
         Assertions.assertEquals(
                 "callback.nucleo-relacionamento.consumer",
                 ConsumerCatalog.CALLBACK_NUCLEO_RELACIONAMENTO_CONSUMER);
+        Assertions.assertEquals(
+                "callback.programa.consumer",
+                ConsumerCatalog.CALLBACK_PROGRAMA_CONSUMER);
     }
 }

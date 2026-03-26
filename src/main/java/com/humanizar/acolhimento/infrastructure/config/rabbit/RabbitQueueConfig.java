@@ -28,4 +28,21 @@ public class RabbitQueueConfig {
                 .deadLetterRoutingKey(QueueCatalog.CALLBACK_ACOLHIMENTO_NUCLEO_RELACIONAMENTO_DLQ)
                 .build();
     }
+
+    @Bean
+    public Queue callbackProgramaAcolhimentoDlq() {
+        return QueueBuilder.durable(QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA_DLQ)
+                .quorum()
+                .build();
+    }
+
+    @Bean
+    public Queue callbackProgramaAcolhimentoQueue() {
+        return QueueBuilder.durable(QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA)
+                .quorum()
+                .withArgument("x-delivery-limit", INBOUND_DELIVERY_LIMIT)
+                .deadLetterExchange("")
+                .deadLetterRoutingKey(QueueCatalog.CALLBACK_ACOLHIMENTO_PROGRAMA_DLQ)
+                .build();
+    }
 }
