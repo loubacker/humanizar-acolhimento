@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoDeleteService;
 import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoDeleteResponseDTO;
 
@@ -23,25 +24,25 @@ public class AcolhimentoDeleteController {
     private static final Logger log = LoggerFactory.getLogger(AcolhimentoDeleteController.class);
 
     private final AcolhimentoDeleteService acolhimentoDeleteService;
+    private final InboundEnvelopeMapper inboundEnvelopeMapper;
 
-    public AcolhimentoDeleteController(AcolhimentoDeleteService acolhimentoDeleteService) {
+    public AcolhimentoDeleteController(
+            AcolhimentoDeleteService acolhimentoDeleteService,
+            InboundEnvelopeMapper inboundEnvelopeMapper) {
         this.acolhimentoDeleteService = acolhimentoDeleteService;
+        this.inboundEnvelopeMapper = inboundEnvelopeMapper;
     }
 
     @DeleteMapping("/delete/{patientId}")
     public ResponseEntity<AcolhimentoDeleteResponseDTO> delete(
             @PathVariable UUID patientId,
-            @RequestBody(required = false) InboundEnvelopeDTO<AcolhimentoDeleteDTO> envelop) {
-        String correlationId = envelop != null && envelop.correlationId() != null
-                ? envelop.correlationId().toString()
-                : null;
-        String payloadPatientId = envelop != null && envelop.payload() != null && envelop.payload().patientId() != null
-                ? envelop.payload().patientId().toString()
-                : null;
+            @RequestBody(required = false) InboundEnvelopeDTO<AcolhimentoDeleteDTO> envelope) {
+        String correlationId = inboundEnvelopeMapper.correlationIdAsString(envelope);
+        String payloadPatientId = inboundEnvelopeMapper.payloadFieldAsString(envelope, AcolhimentoDeleteDTO::patientId);
 
         log.info("Recebido DELETE /api/v1/acolhimento/delete/{}. correlationId={}, payloadPatientId={}, operacao=DELETE",
                 patientId, correlationId, payloadPatientId);
-        acolhimentoDeleteService.deleteByPatientId(patientId, envelop);
+        acolhimentoDeleteService.deleteByPatientId(patientId, envelope);
         log.info("DELETE /api/v1/acolhimento/delete/{} Concluido com Sucesso. correlationId={}",
                 patientId, correlationId);
 

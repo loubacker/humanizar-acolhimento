@@ -27,7 +27,7 @@ import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcol
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
-import com.humanizar.acolhimento.application.outbound.mapper.OutboundUpdateMapper;
+import com.humanizar.acolhimento.application.outbound.mapper.OutboundUpsertMapper;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
@@ -42,7 +42,7 @@ class UpdateOutboxCommandUseCaseTest {
         @Mock
         private OutboxEventPort outboxEventPort;
 
-        private final OutboundUpdateMapper updateOutboundMapper = new OutboundUpdateMapper();
+        private final OutboundUpsertMapper outboundUpsertMapper = new OutboundUpsertMapper();
         private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
         @Captor
@@ -55,7 +55,7 @@ class UpdateOutboxCommandUseCaseTest {
         void setUp() {
                 useCase = new UpdateOutboxCommandUseCase(
                                 outboxEventPort,
-                                updateOutboundMapper,
+                                outboundUpsertMapper,
                                 objectMapper);
         }
 

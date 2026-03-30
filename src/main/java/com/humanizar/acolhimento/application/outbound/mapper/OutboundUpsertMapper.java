@@ -14,29 +14,30 @@ import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcol
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoMappingResult;
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
 import com.humanizar.acolhimento.application.catalog.ExchangeCatalog;
-import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoResponsavelDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoPatientDTO;
 
 @Component
-public class OutboundCreateMapper {
+public class OutboundUpsertMapper {
 
     private static final String PRODUCER_SERVICE = "humanizar-acolhimento";
     private static final String AGGREGATE_TYPE = "acolhimento";
     private static final short EVENT_VERSION = 1;
 
-    public OutboundEnvelopeDTO<AcolhimentoCommandDTO> toCreateCommandEnvelope(
+    public OutboundEnvelopeDTO<AcolhimentoCommandDTO> toCommandEnvelope(
             InboundEnvelopeDTO<InboundAcolhimentoDTO> inboundEnvelope,
             UUID eventId,
-            InboundAcolhimentoMappingResult mappingResult) {
+            InboundAcolhimentoMappingResult mappingResult,
+            String routingKey) {
         Objects.requireNonNull(inboundEnvelope, "inboundEnvelope é obrigatório");
         Objects.requireNonNull(mappingResult, "mappingResult é obrigatório");
         Objects.requireNonNull(mappingResult.acolhimento(), "mappingResult.acolhimento é obrigatório");
         Objects.requireNonNull(mappingResult.acolhimento().getId(),
                 "mappingResult.acolhimento.id é obrigatório");
         Objects.requireNonNull(eventId, "eventId é obrigatório");
+        Objects.requireNonNull(routingKey, "routingKey é obrigatório");
 
         Map<UUID, List<OutboundNucleoResponsavelDTO>> responsaveisByNucleoPatientId = mappingResult
                 .nucleoPatientResponsaveis().stream()
@@ -69,7 +70,7 @@ public class OutboundCreateMapper {
                 inboundEnvelope.correlationId(),
                 PRODUCER_SERVICE,
                 ExchangeCatalog.ACOLHIMENTO_COMMAND,
-                RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1,
+                routingKey,
                 AGGREGATE_TYPE,
                 mappingResult.acolhimento().getId(),
                 EVENT_VERSION,

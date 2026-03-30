@@ -15,6 +15,7 @@ public enum ReasonCode {
     INBOUND_EMPTY_COLLECTION(400, "Colecao obrigatoria vazia no inbound.", false),
     INBOUND_DUPLICATE_ITEM(400, "Item duplicado em colecao inbound.", false),
     DUPLICATE_PATIENT(409, "Acolhimento ja existe para o patientId informado.", false),
+    DELETE_IN_PROGRESS(409, "Ja existe operacao DELETE pendente para o patientId informado.", false),
     UNSUPPORTED_EVENT_VERSION(422, "Versao de evento nao suportada.", false),
     UNSUPPORTED_ROUTING_KEY(400, "Routing key nao suportada.", false),
     DUPLICATE_EVENT(409, "Evento duplicado ja processado.", false),

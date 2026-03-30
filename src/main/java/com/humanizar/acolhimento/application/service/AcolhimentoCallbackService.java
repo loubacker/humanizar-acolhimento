@@ -22,16 +22,19 @@ public class AcolhimentoCallbackService {
     private final UpdateCallbackUseCase updatePendingTargetStatusFromCallbackUseCase;
     private final FinalizePendingAcolhimentoUseCase finalizePendingAcolhimentoUseCase;
     private final SaveProcessedEventUseCase saveProcessedEventUseCase;
+    private final AcolhimentoDeleteService acolhimentoDeleteService;
 
     public AcolhimentoCallbackService(
             CheckDuplicateEventUseCase checkDuplicateEventUseCase,
             UpdateCallbackUseCase updatePendingTargetStatusFromCallbackUseCase,
             FinalizePendingAcolhimentoUseCase finalizePendingAcolhimentoUseCase,
-            SaveProcessedEventUseCase saveProcessedEventUseCase) {
+            SaveProcessedEventUseCase saveProcessedEventUseCase,
+            AcolhimentoDeleteService acolhimentoDeleteService) {
         this.checkDuplicateEventUseCase = checkDuplicateEventUseCase;
         this.updatePendingTargetStatusFromCallbackUseCase = updatePendingTargetStatusFromCallbackUseCase;
         this.finalizePendingAcolhimentoUseCase = finalizePendingAcolhimentoUseCase;
         this.saveProcessedEventUseCase = saveProcessedEventUseCase;
+        this.acolhimentoDeleteService = acolhimentoDeleteService;
     }
 
     public void processCallback(String consumerName, String targetService, CallbackDTO callback) {
@@ -54,6 +57,8 @@ public class AcolhimentoCallbackService {
                 resolveTargetStatus(callback.status()));
         finalizePendingAcolhimentoUseCase.execute(callback.eventId());
 
+        acolhimentoDeleteService.handlePostCallbackSaga(callback.eventId(), targetService, callback.status());
+
         saveProcessedEventUseCase.execute(consumerName, callback);
     }
 
@@ -65,16 +70,20 @@ public class AcolhimentoCallbackService {
         if (callback == null) {
             throw new AcolhimentoException(ReasonCode.VALIDATION_ERROR, null, "callback e obrigatorio");
         }
+
+        String correlationId = callback.correlationId() != null ? callback.correlationId().toString() : null;
+
         if (callback.eventId() == null) {
             throw new AcolhimentoException(
                     ReasonCode.VALIDATION_ERROR,
-                    callback.correlationId() != null ? callback.correlationId().toString() : null,
+                    correlationId,
                     "callback.eventId e obrigatorio");
         }
+
         if (callback.status() == null || callback.status().isBlank()) {
             throw new AcolhimentoException(
                     ReasonCode.VALIDATION_ERROR,
-                    callback.correlationId() != null ? callback.correlationId().toString() : null,
+                    correlationId,
                     "callback.status e obrigatorio");
         }
     }

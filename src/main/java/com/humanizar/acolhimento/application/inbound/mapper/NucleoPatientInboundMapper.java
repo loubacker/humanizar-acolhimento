@@ -21,8 +21,10 @@ import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatientResponsavel;
 @Component
 public class NucleoPatientInboundMapper {
 
+    private static final String NUCLEO_PATIENT_FIELD = "acolhimento.nucleoPatient";
+
     public Map<UUID, UUID> reconcileIdsForCreate(List<NucleoPatientDTO> dtos, String correlationId) {
-        List<NucleoPatientDTO> validated = validateNucleos(dtos, "acolhimento.nucleoPatient", correlationId);
+        List<NucleoPatientDTO> validated = validateNucleos(dtos, correlationId);
         Map<UUID, UUID> idsByNucleoId = new LinkedHashMap<>();
         for (NucleoPatientDTO dto : validated) {
             idsByNucleoId.put(dto.nucleoId(), UUID.randomUUID());
@@ -34,7 +36,7 @@ public class NucleoPatientInboundMapper {
             List<NucleoPatientDTO> dtos,
             Map<UUID, UUID> existingIdsByNucleoId,
             String correlationId) {
-        List<NucleoPatientDTO> validated = validateNucleos(dtos, "acolhimento.nucleoPatient", correlationId);
+        List<NucleoPatientDTO> validated = validateNucleos(dtos, correlationId);
         Map<UUID, UUID> existing = existingIdsByNucleoId != null ? existingIdsByNucleoId : Map.of();
         Map<UUID, UUID> idsByNucleoId = new LinkedHashMap<>();
         for (NucleoPatientDTO dto : validated) {
@@ -50,12 +52,11 @@ public class NucleoPatientInboundMapper {
             Map<UUID, UUID> idsByNucleoId,
             String correlationId) {
         requireField(patientId, "acolhimento.patientId", correlationId);
-        List<NucleoPatientDTO> validated = validateNucleos(dtos, "acolhimento.nucleoPatient", correlationId);
+        List<NucleoPatientDTO> validated = validateNucleos(dtos, correlationId);
         Map<UUID, UUID> resolvedIds = requireField(idsByNucleoId, "nucleoPatientIdsByNucleoId", correlationId);
 
         List<NucleoPatient> result = new ArrayList<>(validated.size());
-        for (int i = 0; i < validated.size(); i++) {
-            NucleoPatientDTO dto = validated.get(i);
+        for (NucleoPatientDTO dto : validated) {
             UUID nucleoPatientId = requireField(
                     resolvedIds.get(dto.nucleoId()),
                     "nucleoPatientIdsByNucleoId[" + dto.nucleoId() + "]",
@@ -76,7 +77,7 @@ public class NucleoPatientInboundMapper {
             List<NucleoPatientDTO> dtos,
             Map<UUID, UUID> idsByNucleoId,
             String correlationId) {
-        List<NucleoPatientDTO> validated = validateNucleos(dtos, "acolhimento.nucleoPatient", correlationId);
+        List<NucleoPatientDTO> validated = validateNucleos(dtos, correlationId);
         Map<UUID, UUID> resolvedIds = requireField(idsByNucleoId, "nucleoPatientIdsByNucleoId", correlationId);
 
         List<NucleoPatientResponsavel> result = new ArrayList<>();
@@ -118,12 +119,12 @@ public class NucleoPatientInboundMapper {
         return result;
     }
 
-    private List<NucleoPatientDTO> validateNucleos(List<NucleoPatientDTO> dtos, String field, String correlationId) {
-        List<NucleoPatientDTO> safeDtos = requireNonEmpty(dtos, field, correlationId);
+    private List<NucleoPatientDTO> validateNucleos(List<NucleoPatientDTO> dtos, String correlationId) {
+        List<NucleoPatientDTO> safeDtos = requireNonEmpty(dtos, NUCLEO_PATIENT_FIELD, correlationId);
         Set<UUID> nucleoIds = new HashSet<>();
 
         for (int i = 0; i < safeDtos.size(); i++) {
-            String itemField = field + "[" + i + "]";
+            String itemField = NUCLEO_PATIENT_FIELD + "[" + i + "]";
             NucleoPatientDTO dto = requireField(safeDtos.get(i), itemField, correlationId);
             UUID nucleoId = requireField(dto.nucleoId(), itemField + ".nucleoId", correlationId);
 

@@ -16,9 +16,9 @@ import jakarta.persistence.UniqueConstraint;
 
 @Entity
 @Table(name = "nucleo_patient_responsavel", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_npr_nucleo_responsavel", columnNames = { "nucleo_patient_id", "responsavel_id" })
+        @UniqueConstraint(name = "uk_nucleo_responsavel", columnNames = { "nucleo_patient_id", "responsavel_id" })
 }, indexes = {
-        @Index(name = "idx_npr_nucleo_patient_id", columnList = "nucleo_patient_id")
+        @Index(name = "idx_nucleo_patient_id", columnList = "nucleo_patient_id")
 })
 public class NucleoPatientResponsavelEntity {
 

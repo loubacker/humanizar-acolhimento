@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoUpdateService;
 import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoUpdateResponseDTO;
 
@@ -23,21 +24,21 @@ public class AcolhimentoUpdateController {
     private static final Logger log = LoggerFactory.getLogger(AcolhimentoUpdateController.class);
 
     private final AcolhimentoUpdateService acolhimentoUpdateService;
+    private final InboundEnvelopeMapper inboundEnvelopeMapper;
 
-    public AcolhimentoUpdateController(AcolhimentoUpdateService acolhimentoUpdateService) {
+    public AcolhimentoUpdateController(
+            AcolhimentoUpdateService acolhimentoUpdateService,
+            InboundEnvelopeMapper inboundEnvelopeMapper) {
         this.acolhimentoUpdateService = acolhimentoUpdateService;
+        this.inboundEnvelopeMapper = inboundEnvelopeMapper;
     }
 
     @PutMapping("/update/{patientId}")
     public ResponseEntity<AcolhimentoUpdateResponseDTO> update(
             @PathVariable UUID patientId,
             @RequestBody InboundEnvelopeDTO<InboundAcolhimentoDTO> envelope) {
-        String correlationId = envelope != null && envelope.correlationId() != null
-                ? envelope.correlationId().toString()
-                : null;
-        String payloadPatientId = envelope != null && envelope.payload() != null && envelope.payload().patientId() != null
-                ? envelope.payload().patientId().toString()
-                : null;
+        String correlationId = inboundEnvelopeMapper.correlationIdAsString(envelope);
+        String payloadPatientId = inboundEnvelopeMapper.payloadFieldAsString(envelope, InboundAcolhimentoDTO::patientId);
 
         log.info("Recebido PUT /api/v1/acolhimento/update/{}. correlationId={}, payloadPatientId={}, operacao=UPDATE",
                 patientId, correlationId, payloadPatientId);

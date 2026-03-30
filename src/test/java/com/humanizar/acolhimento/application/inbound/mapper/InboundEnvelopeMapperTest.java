@@ -23,7 +23,7 @@ class InboundEnvelopeMapperTest {
 
         assertDoesNotThrow(() -> mapper.validate(envelop));
         assertEquals(envelop.correlationId().toString(), mapper.correlationIdAsString(envelop));
-        assertEquals(envelop, mapper.toInboundCommand(envelop));
+        assertEquals(envelop, mapper.validate(envelop));
     }
 
     @Test

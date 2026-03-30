@@ -212,7 +212,7 @@ public class AcolhimentoCreateService {
             if (message != null) {
                 String normalized = message.toLowerCase(Locale.ROOT);
                 if (normalized.contains("uk_acolhimento_patient_id")
-                        || normalized.contains("uk_nucleo_patient_patient_nucleo")
+                        || normalized.contains("uk_patient_nucleo")
                         || normalized.contains("duplicate key")
                         || normalized.contains("restrição de unicidade")
                         || normalized.contains("restricao de unicidade")) {

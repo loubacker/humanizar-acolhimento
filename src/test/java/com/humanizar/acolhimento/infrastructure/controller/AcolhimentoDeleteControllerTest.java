@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoDeleteService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -33,7 +34,8 @@ class AcolhimentoDeleteControllerTest {
     @BeforeEach
     @SuppressWarnings("unused")
     void setUp() {
-        AcolhimentoDeleteController controller = new AcolhimentoDeleteController(acolhimentoDeleteService);
+        AcolhimentoDeleteController controller = new AcolhimentoDeleteController(
+                acolhimentoDeleteService, new InboundEnvelopeMapper());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new AcolhimentoExceptionHandler())
                 .build();
@@ -72,6 +74,30 @@ class AcolhimentoDeleteControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.reasonCode").value("PATIENT_NOT_FOUND"))
+                .andExpect(jsonPath("$.correlationId").value(correlationId))
+                .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/delete/" + patientId));
+
+        verify(acolhimentoDeleteService).deleteByPatientId(eq(patientId), any());
+    }
+
+    @Test
+    void shouldReturn409WhenDeleteIsAlreadyInProgress() throws Exception {
+        UUID patientId = UUID.fromString("3e9b0d9d-1a5b-4a86-b0dd-e2d90f505f35");
+        String correlationId = "corr-delete-409";
+
+        doThrow(new AcolhimentoException(
+                ReasonCode.DELETE_IN_PROGRESS,
+                correlationId,
+                "Ja existe operacao DELETE pendente para patientId=" + patientId))
+                .when(acolhimentoDeleteService)
+                .deleteByPatientId(eq(patientId), any());
+
+        mockMvc.perform(delete("/api/v1/acolhimento/delete/{patientId}", patientId)
+                .contentType("application/json")
+                .content(validDeleteEnvelope(patientId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.reasonCode").value("DELETE_IN_PROGRESS"))
                 .andExpect(jsonPath("$.correlationId").value(correlationId))
                 .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/delete/" + patientId));
 

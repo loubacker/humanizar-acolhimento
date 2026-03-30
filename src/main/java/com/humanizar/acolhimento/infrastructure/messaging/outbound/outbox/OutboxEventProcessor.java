@@ -13,7 +13,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
+import com.humanizar.acolhimento.application.usecase.central.FindPendingByEventIdUseCase;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
 import com.humanizar.acolhimento.domain.model.enums.Status;
@@ -33,16 +35,19 @@ public class OutboxEventProcessor {
     private final PendingTargetStatusPort pendingTargetStatusPort;
     private final RabbitOutboxPublisher rabbitOutboxPublisher;
     private final OutboxRetryPolicy retryPolicy;
+    private final FindPendingByEventIdUseCase findPendingByEventIdUseCase;
 
     public OutboxEventProcessor(
             OutboxEventPort outboxEventPort,
             PendingTargetStatusPort pendingTargetStatusPort,
             RabbitOutboxPublisher rabbitOutboxPublisher,
-            OutboxRetryPolicy retryPolicy) {
+            OutboxRetryPolicy retryPolicy,
+            FindPendingByEventIdUseCase findPendingByEventIdUseCase) {
         this.outboxEventPort = outboxEventPort;
         this.pendingTargetStatusPort = pendingTargetStatusPort;
         this.rabbitOutboxPublisher = rabbitOutboxPublisher;
         this.retryPolicy = retryPolicy;
+        this.findPendingByEventIdUseCase = findPendingByEventIdUseCase;
         log.info("OutboxEventProcessor iniciado. instanceId={}", instanceId);
     }
 
@@ -78,8 +83,8 @@ public class OutboxEventProcessor {
         }
 
         try {
+            createMissingPendingTargets(processingEvent.getEventId(), processingEvent.getRoutingKey());
             rabbitOutboxPublisher.publish(processingEvent);
-            createMissingPendingTargets(processingEvent.getEventId());
 
             processingEvent.setStatus(OutboxStatus.PUBLISHED);
             processingEvent.setPublishedAt(LocalDateTime.now());
@@ -112,7 +117,11 @@ public class OutboxEventProcessor {
         }
     }
 
-    private void createMissingPendingTargets(UUID eventId) {
+    private void createMissingPendingTargets(UUID eventId, String routingKey) {
+        if (findPendingByEventIdUseCase.execute(eventId).isEmpty()) {
+            return;
+        }
+
         List<PendingTargetStatus> existing = pendingTargetStatusPort.findByEventId(eventId);
         Set<String> existingTargets = existing.stream()
                 .map(PendingTargetStatus::getTargetService)
@@ -127,11 +136,14 @@ public class OutboxEventProcessor {
         }
 
         if (!existingTargets.contains(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO)) {
+            Status programaStatus = RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2.equals(routingKey)
+                    ? Status.ON_HOLD
+                    : Status.PENDING;
             pendingTargetStatusPort.save(new PendingTargetStatus(
                     null,
                     eventId,
                     TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO,
-                    Status.PENDING));
+                    programaStatus));
         }
     }
 }

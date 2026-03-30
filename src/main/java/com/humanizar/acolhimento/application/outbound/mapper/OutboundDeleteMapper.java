@@ -36,7 +36,7 @@ public class OutboundDeleteMapper {
                 inboundEnvelope.correlationId(),
                 PRODUCER_SERVICE,
                 ExchangeCatalog.ACOLHIMENTO_COMMAND,
-                RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1,
+                RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2,
                 AGGREGATE_TYPE,
                 aggregateId,
                 EVENT_VERSION,

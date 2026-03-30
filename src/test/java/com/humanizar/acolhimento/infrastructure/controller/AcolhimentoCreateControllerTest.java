@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoCreateService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -32,7 +33,8 @@ class AcolhimentoCreateControllerTest {
   @BeforeEach
   @SuppressWarnings("unused")
   void setUp() {
-    AcolhimentoCreateController controller = new AcolhimentoCreateController(acolhimentoCreateService);
+    AcolhimentoCreateController controller = new AcolhimentoCreateController(
+        acolhimentoCreateService, new InboundEnvelopeMapper());
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setControllerAdvice(new AcolhimentoExceptionHandler())
         .build();

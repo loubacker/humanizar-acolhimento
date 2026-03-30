@@ -6,10 +6,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
 import com.humanizar.acolhimento.domain.port.peding.PendingAcolhimentoPort;
@@ -52,10 +55,23 @@ public class PendingAcolhimentoAdapter implements PendingAcolhimentoPort {
     }
 
     @Override
+    public Page<PendingAcolhimento> findByPatientId(UUID patientId, Pageable pageable) {
+        return repository.findByPatientId(patientId, pageable).map(this::toDomain);
+    }
+
+    @Override
     public List<PendingAcolhimento> findByStatusInOrderByCreatedAtAsc(List<Status> status) {
         return repository.findByStatusInOrderByCreatedAtAsc(status).stream()
                 .map(this::toDomain)
                 .toList();
+    }
+
+    @Override
+    public boolean checkDeleteStatusByPatientId(
+            UUID patientId,
+            OperationType operationType,
+            Status status) {
+        return repository.checkDeleteStatusByPatientId(patientId, operationType, status);
     }
 
     @Override

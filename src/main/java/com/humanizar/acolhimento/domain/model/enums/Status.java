@@ -4,5 +4,5 @@ public enum Status {
     PENDING,
     SUCCESS,
     ERROR,
-    TIMEOUT
+    ON_HOLD
 }

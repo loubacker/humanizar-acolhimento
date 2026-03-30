@@ -25,6 +25,16 @@ public class CorsConfig {
 
         log.info("Configurando CORS com origins permitidas: {}", allowedOrigins);
 
+        CorsConfiguration configuration = getCorsConfiguration(allowedOrigins);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+
+        log.info("CORS bean criado e registrado para padrão: /**");
+        return source;
+    }
+
+    private static CorsConfiguration getCorsConfiguration(List<String> allowedOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
@@ -40,12 +50,6 @@ public class CorsConfig {
                 "X-Page-Size"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-
-        log.info("CORS bean criado e registrado para padrão: /**");
-
-        return source;
+        return configuration;
     }
 }

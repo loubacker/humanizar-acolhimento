@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoCreateService;
 import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoCreateResponseDTO;
 
@@ -20,20 +21,20 @@ public class AcolhimentoCreateController {
     private static final Logger log = LoggerFactory.getLogger(AcolhimentoCreateController.class);
 
     private final AcolhimentoCreateService acolhimentoCreateService;
+    private final InboundEnvelopeMapper inboundEnvelopeMapper;
 
-    public AcolhimentoCreateController(AcolhimentoCreateService acolhimentoCreateService) {
+    public AcolhimentoCreateController(
+            AcolhimentoCreateService acolhimentoCreateService,
+            InboundEnvelopeMapper inboundEnvelopeMapper) {
         this.acolhimentoCreateService = acolhimentoCreateService;
+        this.inboundEnvelopeMapper = inboundEnvelopeMapper;
     }
 
     @PostMapping("/register")
     public ResponseEntity<AcolhimentoCreateResponseDTO> register(
             @RequestBody InboundEnvelopeDTO<InboundAcolhimentoDTO> envelope) {
-        String correlationId = envelope != null && envelope.correlationId() != null
-                ? envelope.correlationId().toString()
-                : null;
-        String patientId = envelope != null && envelope.payload() != null && envelope.payload().patientId() != null
-                ? envelope.payload().patientId().toString()
-                : null;
+        String correlationId = inboundEnvelopeMapper.correlationIdAsString(envelope);
+        String patientId = inboundEnvelopeMapper.payloadFieldAsString(envelope, InboundAcolhimentoDTO::patientId);
 
         log.info("Recebido POST register. correlationId={}, patientId={}, operacao=CREATE",
                 correlationId, patientId);

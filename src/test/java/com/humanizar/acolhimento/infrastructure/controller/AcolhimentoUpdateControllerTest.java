@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoUpdateService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -36,7 +37,8 @@ class AcolhimentoUpdateControllerTest {
   @BeforeEach
   @SuppressWarnings("unused")
   void setUp() {
-    AcolhimentoUpdateController controller = new AcolhimentoUpdateController(acolhimentoUpdateService);
+    AcolhimentoUpdateController controller = new AcolhimentoUpdateController(
+        acolhimentoUpdateService, new InboundEnvelopeMapper());
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setControllerAdvice(new AcolhimentoExceptionHandler())
         .build();

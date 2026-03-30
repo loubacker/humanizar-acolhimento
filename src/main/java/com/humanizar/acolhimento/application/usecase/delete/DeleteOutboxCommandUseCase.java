@@ -55,7 +55,7 @@ public class DeleteOutboxCommandUseCase {
                 .correlationId(inboundEnvelope.correlationId())
                 .producerService(PRODUCER_SERVICE)
                 .exchangeName(ExchangeCatalog.ACOLHIMENTO_COMMAND)
-                .routingKey(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1)
+                .routingKey(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2)
                 .aggregateType(AGGREGATE_TYPE)
                 .aggregateId(aggregateId)
                 .eventVersion(EVENT_VERSION)

@@ -22,6 +22,8 @@ import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcol
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoRetrieveService;
+import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralListService;
+import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralSnapshotService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.infrastructure.controller.handler.AcolhimentoExceptionHandler;
@@ -32,13 +34,21 @@ class AcolhimentoRetrieveControllerTest {
         @Mock
         private AcolhimentoRetrieveService acolhimentoRetrieveService;
 
+        @Mock
+        private AcolhimentoCentralListService acolhimentoCentralListService;
+
+        @Mock
+        private AcolhimentoCentralSnapshotService acolhimentoCentralSnapshotService;
+
         private MockMvc mockMvc;
 
         @BeforeEach
         @SuppressWarnings("unused")
         void setUp() {
                 AcolhimentoRetrieveController controller = new AcolhimentoRetrieveController(
-                                acolhimentoRetrieveService);
+                                acolhimentoRetrieveService,
+                                acolhimentoCentralListService,
+                                acolhimentoCentralSnapshotService);
                 mockMvc = MockMvcBuilders.standaloneSetup(controller)
                                 .setControllerAdvice(new AcolhimentoExceptionHandler())
                                 .build();

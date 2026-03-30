@@ -1,6 +1,7 @@
 package com.humanizar.acolhimento.application.inbound.mapper;
 
 import java.util.UUID;
+import java.util.function.Function;
 
 import org.springframework.stereotype.Component;
 
@@ -34,18 +35,21 @@ public class InboundEnvelopeMapper {
         return envelop.correlationId().toString();
     }
 
-    public <T> InboundEnvelopeDTO<T> toInboundCommand(InboundEnvelopeDTO<T> inboundEnvelopeDTO) {
-        return validate(inboundEnvelopeDTO);
+    public <T> String payloadFieldAsString(InboundEnvelopeDTO<T> envelope, Function<T, ?> extractor) {
+        if (envelope == null || envelope.payload() == null) {
+            return null;
+        }
+        Object value = extractor.apply(envelope.payload());
+        return value != null ? value.toString() : null;
     }
 
-    private String requireText(String value, String field, String correlationId) {
+    private void requireText(String value, String field, String correlationId) {
         if (value == null || value.isBlank()) {
             throw new AcolhimentoException(
                     ReasonCode.INBOUND_REQUIRED_FIELD,
                     correlationId,
                     "Campo obrigatorio ausente: " + field);
         }
-        return value;
     }
 
     private <T> T requireField(T value, String field, String correlationId) {

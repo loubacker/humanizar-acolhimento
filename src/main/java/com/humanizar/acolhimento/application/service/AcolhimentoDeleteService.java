@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.application.inbound.dto.InboundDeleteContextDTO;
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
@@ -15,12 +16,16 @@ import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelope
 import com.humanizar.acolhimento.application.inbound.mapper.InboundDeleteContextMapper;
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
+import com.humanizar.acolhimento.application.usecase.central.FindPendingByEventIdUseCase;
+import com.humanizar.acolhimento.application.usecase.central.FindTargetsByEventIdUseCase;
 import com.humanizar.acolhimento.application.usecase.create.CreatePendingAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.create.MarkPendingCreateUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteOutboxCommandUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteNucleoPatientUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteNucleoPatientResponsavelUseCase;
+import com.humanizar.acolhimento.application.usecase.delete.DeleteProgramaUseCase;
+import com.humanizar.acolhimento.application.usecase.delete.ValidateDeleteProgressUseCase;
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientResponsavelUseCase;
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientUseCase;
@@ -28,6 +33,7 @@ import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
+import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
 
 @Service
@@ -44,7 +50,11 @@ public class AcolhimentoDeleteService {
     private final DeleteNucleoPatientUseCase deleteNucleoPatientUseCase;
     private final DeleteAcolhimentoUseCase deleteAcolhimentoUseCase;
     private final DeleteOutboxCommandUseCase deleteOutboxCommandUseCase;
+    private final DeleteProgramaUseCase deleteProgramaUseCase;
+    private final ValidateDeleteProgressUseCase validateDeleteProgressUseCase;
     private final MarkPendingCreateUseCase markPendingCreateUseCase;
+    private final FindPendingByEventIdUseCase findPendingByEventIdUseCase;
+    private final FindTargetsByEventIdUseCase findTargetsByEventIdUseCase;
     private final ObjectMapper objectMapper;
 
     public AcolhimentoDeleteService(
@@ -57,7 +67,11 @@ public class AcolhimentoDeleteService {
             DeleteNucleoPatientUseCase deleteNucleoPatientUseCase,
             DeleteAcolhimentoUseCase deleteAcolhimentoUseCase,
             DeleteOutboxCommandUseCase deleteOutboxCommandUseCase,
+            DeleteProgramaUseCase deleteProgramaUseCase,
+            ValidateDeleteProgressUseCase validateDeleteProgressUseCase,
             MarkPendingCreateUseCase markPendingCreateUseCase,
+            FindPendingByEventIdUseCase findPendingByEventIdUseCase,
+            FindTargetsByEventIdUseCase findTargetsByEventIdUseCase,
             ObjectMapper objectMapper) {
         this.findAcolhimentoByPatientIdRetrieveUseCase = findAcolhimentoByPatientIdRetrieveUseCase;
         this.findNucleoPatientByPatientIdRetrieveUseCase = findNucleoPatientByPatientIdRetrieveUseCase;
@@ -68,7 +82,11 @@ public class AcolhimentoDeleteService {
         this.deleteNucleoPatientUseCase = deleteNucleoPatientUseCase;
         this.deleteAcolhimentoUseCase = deleteAcolhimentoUseCase;
         this.deleteOutboxCommandUseCase = deleteOutboxCommandUseCase;
+        this.deleteProgramaUseCase = deleteProgramaUseCase;
+        this.validateDeleteProgressUseCase = validateDeleteProgressUseCase;
         this.markPendingCreateUseCase = markPendingCreateUseCase;
+        this.findPendingByEventIdUseCase = findPendingByEventIdUseCase;
+        this.findTargetsByEventIdUseCase = findTargetsByEventIdUseCase;
         this.objectMapper = objectMapper;
     }
 
@@ -80,6 +98,8 @@ public class AcolhimentoDeleteService {
         UUID correlationId = context.envelop().correlationId();
         String correlationIdText = correlationId != null ? correlationId.toString() : null;
 
+        validateDeleteProgressUseCase.execute(patientId, correlationIdText);
+
         Acolhimento acolhimento = findAcolhimentoByPatientIdRetrieveUseCase.execute(patientId, correlationIdText);
         InboundAcolhimentoDTO snapshot = buildSnapshot(acolhimento, patientId);
 
@@ -90,9 +110,6 @@ public class AcolhimentoDeleteService {
                 serializeSnapshot(snapshot, correlationIdText));
 
         try {
-            deleteNucleoPatientResponsavelUseCase.execute(patientId);
-            deleteNucleoPatientUseCase.execute(patientId);
-            deleteAcolhimentoUseCase.execute(patientId);
             deleteOutboxCommandUseCase.execute(
                     context.envelop(),
                     pending.getEventId(),
@@ -101,6 +118,42 @@ public class AcolhimentoDeleteService {
             safeMarkPendingAsError(pending.getEventId());
             throw unwrap(ex, correlationIdText);
         }
+    }
+
+    public void handlePostCallbackSaga(UUID eventId, String completedTarget, String callbackStatus) {
+        if (!"PROCESSED".equalsIgnoreCase(callbackStatus)) {
+            return;
+        }
+
+        PendingAcolhimento pending = findPendingByEventIdUseCase.execute(eventId).orElse(null);
+        if (pending == null || pending.getOperationType() != OperationType.DELETE) {
+            return;
+        }
+
+        if (TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO.equals(completedTarget)) {
+            findTargetsByEventIdUseCase.execute(eventId).stream()
+                    .filter(t -> TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO.equals(t.getTargetService()))
+                    .filter(t -> t.getStatus() == Status.ON_HOLD)
+                    .findFirst()
+                    .ifPresent(t -> deleteProgramaUseCase.execute(pending));
+        }
+
+        PendingAcolhimento updated = findPendingByEventIdUseCase.execute(eventId).orElse(null);
+        if (updated != null && updated.getStatus() == Status.SUCCESS) {
+            try {
+                executeLocalDelete(updated.getPatientId());
+            } catch (Exception ex) {
+                safeMarkPendingAsError(eventId);
+                throw unwrap(ex,
+                        updated.getCorrelationId() != null ? updated.getCorrelationId().toString() : null);
+            }
+        }
+    }
+
+    private void executeLocalDelete(UUID patientId) {
+        deleteNucleoPatientResponsavelUseCase.execute(patientId);
+        deleteNucleoPatientUseCase.execute(patientId);
+        deleteAcolhimentoUseCase.execute(patientId);
     }
 
     private void safeMarkPendingAsError(UUID eventId) {

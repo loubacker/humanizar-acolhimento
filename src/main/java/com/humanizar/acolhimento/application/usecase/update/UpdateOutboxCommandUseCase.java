@@ -15,7 +15,7 @@ import com.humanizar.acolhimento.application.catalog.ExchangeCatalog;
 import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.outbound.mapper.OutboundUpdateMapper;
+import com.humanizar.acolhimento.application.outbound.mapper.OutboundUpsertMapper;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
@@ -31,15 +31,15 @@ public class UpdateOutboxCommandUseCase {
     private static final int DEFAULT_MAX_ATTEMPTS = 5;
 
     private final OutboxEventPort outboxEventPort;
-    private final OutboundUpdateMapper updateOutboundMapper;
+    private final OutboundUpsertMapper outboundUpsertMapper;
     private final ObjectMapper objectMapper;
 
     public UpdateOutboxCommandUseCase(
             OutboxEventPort outboxEventPort,
-            OutboundUpdateMapper updateOutboundMapper,
+            OutboundUpsertMapper outboundUpsertMapper,
             ObjectMapper objectMapper) {
         this.outboxEventPort = outboxEventPort;
-        this.updateOutboundMapper = updateOutboundMapper;
+        this.outboundUpsertMapper = outboundUpsertMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -48,8 +48,9 @@ public class UpdateOutboxCommandUseCase {
             InboundEnvelopeDTO<InboundAcolhimentoDTO> inboundEnvelope,
             UUID eventId,
             InboundAcolhimentoMappingResult mappingResult) {
-        OutboundEnvelopeDTO<AcolhimentoCommandDTO> outboundEnvelope = updateOutboundMapper
-                .toUpdateCommandEnvelope(inboundEnvelope, eventId, mappingResult);
+        OutboundEnvelopeDTO<AcolhimentoCommandDTO> outboundEnvelope = outboundUpsertMapper
+                .toCommandEnvelope(inboundEnvelope, eventId, mappingResult,
+                        RoutingKeyCatalog.COMMAND_ACOLHIMENTO_UPDATED_V1);
 
         OutboxEvent event = OutboxEvent.builder()
                 .eventId(eventId)

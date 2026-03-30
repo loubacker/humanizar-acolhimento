@@ -26,6 +26,8 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoRetrieveService;
+import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralListService;
+import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralSnapshotService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 
@@ -43,8 +45,21 @@ class AcolhimentoRetrieveControllerRetryTest {
         }
 
         @Bean
-        AcolhimentoRetrieveController acolhimentoRetrieveController(AcolhimentoRetrieveService service) {
-            return new AcolhimentoRetrieveController(service);
+        AcolhimentoCentralListService acolhimentoCentralListService() {
+            return mock(AcolhimentoCentralListService.class);
+        }
+
+        @Bean
+        AcolhimentoCentralSnapshotService acolhimentoCentralSnapshotService() {
+            return mock(AcolhimentoCentralSnapshotService.class);
+        }
+
+        @Bean
+        AcolhimentoRetrieveController acolhimentoRetrieveController(
+                AcolhimentoRetrieveService service,
+                AcolhimentoCentralListService centralListService,
+                AcolhimentoCentralSnapshotService centralSnapshotService) {
+            return new AcolhimentoRetrieveController(service, centralListService, centralSnapshotService);
         }
     }
 

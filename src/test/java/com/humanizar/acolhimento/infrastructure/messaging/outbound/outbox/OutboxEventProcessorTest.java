@@ -1,32 +1,41 @@
 package com.humanizar.acolhimento.infrastructure.messaging.outbound.outbox;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
+import com.humanizar.acolhimento.application.usecase.central.FindPendingByEventIdUseCase;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
+import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.enums.Status;
+import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
 import com.humanizar.acolhimento.domain.model.peding.PendingTargetStatus;
 import com.humanizar.acolhimento.domain.port.OutboxEventPort;
 import com.humanizar.acolhimento.domain.port.peding.PendingTargetStatusPort;
@@ -47,15 +56,23 @@ class OutboxEventProcessorTest {
     @Mock
     private OutboxRetryPolicy outboxRetryPolicy;
 
+    @Mock
+    private FindPendingByEventIdUseCase findPendingByEventIdUseCase;
+
     @InjectMocks
     private OutboxEventProcessor outboxEventProcessor;
 
     @Captor
     private ArgumentCaptor<PendingTargetStatus> pendingTargetCaptor;
 
+    @BeforeEach
+    void setUp() {
+        lenient().when(findPendingByEventIdUseCase.execute(any(UUID.class))).thenReturn(Optional.empty());
+    }
+
     @Test
     void shouldClaimAndLockEventsFromOutbox() {
-        OutboxEvent event = newOutboxEvent(OutboxStatus.NEW);
+        OutboxEvent event = newOutboxEvent(OutboxStatus.NEW, RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         when(outboxEventPort.findPendingForRelay(anyList(), any(LocalDateTime.class), anyInt()))
                 .thenReturn(List.of(event));
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -71,14 +88,18 @@ class OutboxEventProcessorTest {
 
     @Test
     void shouldPublishAndCreatePendingTargetOnSuccess() {
-        OutboxEvent event = claimOneEvent();
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
+        when(findPendingByEventIdUseCase.execute(event.getEventId())).thenReturn(Optional.of(newPending(event)));
         when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of());
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         outboxEventProcessor.processEvent(event);
 
-        verify(rabbitOutboxPublisher).publish(event);
+        InOrder inOrder = inOrder(pendingTargetStatusPort, rabbitOutboxPublisher);
+        inOrder.verify(pendingTargetStatusPort, times(2)).save(any(PendingTargetStatus.class));
+        inOrder.verify(rabbitOutboxPublisher).publish(event);
+
         verify(pendingTargetStatusPort, times(2)).save(pendingTargetCaptor.capture());
         List<PendingTargetStatus> savedTargets = pendingTargetCaptor.getAllValues();
         assertEquals(2, savedTargets.size());
@@ -94,10 +115,28 @@ class OutboxEventProcessorTest {
     }
 
     @Test
+    void shouldCreateProgramTargetAsOnHoldForDeleteV2Command() {
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2);
+        when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
+        when(findPendingByEventIdUseCase.execute(event.getEventId())).thenReturn(Optional.of(newPending(event)));
+        when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of());
+        when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        outboxEventProcessor.processEvent(event);
+
+        verify(pendingTargetStatusPort, times(2)).save(pendingTargetCaptor.capture());
+        List<PendingTargetStatus> savedTargets = pendingTargetCaptor.getAllValues();
+        assertEquals(Status.PENDING, savedTargets.getFirst().getStatus());
+        assertEquals(Status.ON_HOLD, savedTargets.get(1).getStatus());
+        assertEquals(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, savedTargets.get(1).getTargetService());
+        verify(rabbitOutboxPublisher).publish(event);
+    }
+
+    @Test
     void shouldProcessUsingFreshEntityInsteadOfStaleInput() {
         UUID eventId = UUID.randomUUID();
-        OutboxEvent staleEvent = newOutboxEventWithEventId(eventId, OutboxStatus.NEW);
-        OutboxEvent freshEvent = newOutboxEventWithEventId(eventId, OutboxStatus.NEW);
+        OutboxEvent staleEvent = newOutboxEventWithEventId(eventId, OutboxStatus.NEW, RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
+        OutboxEvent freshEvent = newOutboxEventWithEventId(eventId, OutboxStatus.NEW, RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
 
         when(outboxEventPort.findPendingForRelay(anyList(), any(LocalDateTime.class), anyInt()))
                 .thenReturn(List.of(freshEvent));
@@ -106,6 +145,7 @@ class OutboxEventProcessorTest {
         outboxEventProcessor.claimBatch(1);
 
         when(outboxEventPort.findByEventId(eventId)).thenReturn(Optional.of(freshEvent));
+        when(findPendingByEventIdUseCase.execute(eventId)).thenReturn(Optional.of(newPending(freshEvent)));
         when(pendingTargetStatusPort.findByEventId(eventId)).thenReturn(List.of());
 
         outboxEventProcessor.processEvent(staleEvent);
@@ -118,8 +158,9 @@ class OutboxEventProcessorTest {
 
     @Test
     void shouldNotCreatePendingTargetsWhenAllAlreadyExist() {
-        OutboxEvent event = claimOneEvent();
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
+        when(findPendingByEventIdUseCase.execute(event.getEventId())).thenReturn(Optional.of(newPending(event)));
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of(
                 new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING),
@@ -134,8 +175,9 @@ class OutboxEventProcessorTest {
 
     @Test
     void shouldCreateMissingPendingTargetWhenOnlyOneExists() {
-        OutboxEvent event = claimOneEvent();
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
+        when(findPendingByEventIdUseCase.execute(event.getEventId())).thenReturn(Optional.of(newPending(event)));
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of(
                 new PendingTargetStatus(UUID.randomUUID(), event.getEventId(), TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING)));
@@ -145,16 +187,14 @@ class OutboxEventProcessorTest {
         verify(rabbitOutboxPublisher).publish(event);
         verify(pendingTargetStatusPort).save(pendingTargetCaptor.capture());
         PendingTargetStatus savedTarget = pendingTargetCaptor.getValue();
-        List<PendingTargetStatus> savedTargets = List.of(savedTarget);
-        assertEquals(1, savedTargets.size());
-        assertEquals(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, savedTargets.getFirst().getTargetService());
-        assertEquals(Status.PENDING, savedTargets.getFirst().getStatus());
+        assertEquals(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, savedTarget.getTargetService());
+        assertEquals(Status.PENDING, savedTarget.getStatus());
         assertEquals(OutboxStatus.PUBLISHED, event.getStatus());
     }
 
     @Test
     void shouldMarkAsFailedWhenPublishThrowsAndRetryNotExhausted() {
-        OutboxEvent event = claimOneEvent();
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         event.setAttemptCount(0);
         event.setMaxAttempts(3);
 
@@ -175,7 +215,7 @@ class OutboxEventProcessorTest {
 
     @Test
     void shouldMarkAsDeadWhenRetryIsExhausted() {
-        OutboxEvent event = claimOneEvent();
+        OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         event.setAttemptCount(0);
         event.setMaxAttempts(1);
 
@@ -191,8 +231,8 @@ class OutboxEventProcessorTest {
         assertEquals(null, event.getLockedBy());
     }
 
-    private OutboxEvent claimOneEvent() {
-        OutboxEvent event = newOutboxEvent(OutboxStatus.NEW);
+    private OutboxEvent claimOneEvent(String routingKey) {
+        OutboxEvent event = newOutboxEvent(OutboxStatus.NEW, routingKey);
         when(outboxEventPort.findPendingForRelay(anyList(), any(LocalDateTime.class), anyInt()))
                 .thenReturn(List.of(event));
         when(outboxEventPort.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -200,17 +240,29 @@ class OutboxEventProcessorTest {
         return event;
     }
 
-    private OutboxEvent newOutboxEvent(OutboxStatus status) {
-        return newOutboxEventWithEventId(UUID.randomUUID(), status);
+    private PendingAcolhimento newPending(OutboxEvent event) {
+        return PendingAcolhimento.builder()
+                .eventId(event.getEventId())
+                .correlationId(event.getCorrelationId())
+                .patientId(UUID.randomUUID())
+                .operationType(OperationType.DELETE)
+                .status(Status.PENDING)
+                .payloadSnapshot("{}")
+                .createdAt(LocalDateTime.now())
+                .build();
     }
 
-    private OutboxEvent newOutboxEventWithEventId(UUID eventId, OutboxStatus status) {
+    private OutboxEvent newOutboxEvent(OutboxStatus status, String routingKey) {
+        return newOutboxEventWithEventId(UUID.randomUUID(), status, routingKey);
+    }
+
+    private OutboxEvent newOutboxEventWithEventId(UUID eventId, OutboxStatus status, String routingKey) {
         return OutboxEvent.builder()
                 .id(1L)
                 .eventId(eventId)
                 .correlationId(UUID.randomUUID())
                 .exchangeName("humanizar.acolhimento.command")
-                .routingKey("cmd.acolhimento.created.v1")
+                .routingKey(routingKey)
                 .aggregateType("acolhimento")
                 .aggregateId(UUID.randomUUID())
                 .payload("{\"ok\":true}")

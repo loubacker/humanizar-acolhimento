@@ -26,20 +26,9 @@ public class InboundContextMapper {
 
         InboundEnvelopeDTO<InboundAcolhimentoDTO> envelop = requireField(context.envelop(), "context.envelop", null);
         InboundEnvelopeDTO<InboundAcolhimentoDTO> validatedEnvelope = inboundEnvelopeMapper.validate(envelop);
-
         String correlationId = inboundEnvelopeMapper.correlationIdAsString(validatedEnvelope);
-        InboundAcolhimentoDTO contextPayload = context.payload();
-        InboundAcolhimentoDTO envelopePayload = validatedEnvelope.payload();
 
-        if (contextPayload != null && envelopePayload != null && !Objects.equals(contextPayload, envelopePayload)) {
-            throw new AcolhimentoException(
-                    ReasonCode.INBOUND_CONTEXT_INCONSISTENT,
-                    correlationId,
-                    "context.payload diverge de context.envelop.payload");
-        }
-
-        InboundAcolhimentoDTO normalizedPayload = contextPayload != null ? contextPayload : envelopePayload;
-        requireField(normalizedPayload, "context.payload", correlationId);
+        InboundAcolhimentoDTO normalizedPayload = resolvePayload(context, validatedEnvelope, correlationId);
 
         return new InboundContextDTO<>(validatedEnvelope, normalizedPayload);
     }
@@ -78,6 +67,25 @@ public class InboundContextMapper {
             InboundEnvelopeDTO<InboundAcolhimentoDTO> envelop) {
         InboundContextDTO<InboundAcolhimentoDTO> context = InboundContextDTO.fromEnvelop(envelop);
         return normalizeAndValidateUpdate(pathPatientId, context);
+    }
+
+    private InboundAcolhimentoDTO resolvePayload(
+            InboundContextDTO<InboundAcolhimentoDTO> context,
+            InboundEnvelopeDTO<InboundAcolhimentoDTO> validatedEnvelope,
+            String correlationId) {
+        InboundAcolhimentoDTO contextPayload = context.payload();
+        InboundAcolhimentoDTO envelopePayload = validatedEnvelope.payload();
+
+        if (contextPayload != null && envelopePayload != null && !Objects.equals(contextPayload, envelopePayload)) {
+            throw new AcolhimentoException(
+                    ReasonCode.INBOUND_CONTEXT_INCONSISTENT,
+                    correlationId,
+                    "context.payload diverge de context.envelop.payload");
+        }
+
+        InboundAcolhimentoDTO normalizedPayload = contextPayload != null ? contextPayload : envelopePayload;
+        requireField(normalizedPayload, "context.payload", correlationId);
+        return normalizedPayload;
     }
 
     private <T> T requireField(T value, String field, String correlationId) {
