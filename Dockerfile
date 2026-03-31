@@ -25,6 +25,9 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
+# Instala o Curl para Health Checks e Limpa Cache do APT
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Cria um user non-root
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
@@ -32,6 +35,7 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 COPY --from=builder --chown=appuser:appgroup /app/target/humanizar-acolhimento /app/app-binario
 
 EXPOSE 9099
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["curl", "-fsS", "http://localhost:9099/actuator/health"]
 USER appuser
 
 # Ponto de Entrada no Docker, Executa o Binário Nativo com Configurações de TTL para DNS
