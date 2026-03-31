@@ -1,0 +1,297 @@
+diff --git a/src/main/java/com/humanizar/acolhimento/infrastructure/config/ObjectMapperConfig.java b/src/main/java/com/humanizar/acolhimento/infrastructure/config/ObjectMapperConfig.java
+index 7f26b48..7105f42 100644
+--- a/src/main/java/com/humanizar/acolhimento/infrastructure/config/ObjectMapperConfig.java
++++ b/src/main/java/com/humanizar/acolhimento/infrastructure/config/ObjectMapperConfig.java
+@@ -2,13 +2,29 @@ package com.humanizar.acolhimento.infrastructure.config;
+ 
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
++import org.springframework.context.annotation.ImportRuntimeHints;
++import org.springframework.aot.hint.MemberCategory;
++import org.springframework.aot.hint.RuntimeHints;
++import org.springframework.aot.hint.RuntimeHintsRegistrar;
+ 
+ import com.fasterxml.jackson.databind.DeserializationFeature;
+ import com.fasterxml.jackson.databind.ObjectMapper;
+ import com.fasterxml.jackson.databind.SerializationFeature;
+ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
++import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
++import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
++import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
++import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
++import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
++import com.humanizar.acolhimento.application.outbound.CallbackDTO;
++import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDTO;
++import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDeletedDTO;
++import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
++import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoPatientDTO;
++import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoResponsavelDTO;
+ 
+ @Configuration
++@ImportRuntimeHints(ObjectMapperConfig.ObjectMapperRuntimeHints.class)
+ public class ObjectMapperConfig {
+ 
+     @Bean
+@@ -19,4 +35,26 @@ public class ObjectMapperConfig {
+         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+         return mapper;
+     }
++
++    public static class ObjectMapperRuntimeHints implements RuntimeHintsRegistrar {
++
++        @Override
++        public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
++            registerJsonBinding(hints, InboundAcolhimentoDTO.class);
++            registerJsonBinding(hints, InboundEnvelopeDTO.class);
++            registerJsonBinding(hints, AcolhimentoDeleteDTO.class);
++            registerJsonBinding(hints, NucleoPatientDTO.class);
++            registerJsonBinding(hints, NucleoResponsavelDTO.class);
++            registerJsonBinding(hints, CallbackDTO.class);
++            registerJsonBinding(hints, OutboundEnvelopeDTO.class);
++            registerJsonBinding(hints, AcolhimentoCommandDTO.class);
++            registerJsonBinding(hints, AcolhimentoCommandDeletedDTO.class);
++            registerJsonBinding(hints, OutboundNucleoPatientDTO.class);
++            registerJsonBinding(hints, OutboundNucleoResponsavelDTO.class);
++        }
++
++        private void registerJsonBinding(RuntimeHints hints, Class<?> type) {
++            hints.reflection().registerType(type, MemberCategory.values());
++        }
++    }
+ }
+diff --git a/src/main/java/com/humanizar/acolhimento/infrastructure/config/ResilientMethodsConfig.java b/src/main/java/com/humanizar/acolhimento/infrastructure/config/ResilientMethodsConfig.java
+index 57d93b0..2d32811 100644
+--- a/src/main/java/com/humanizar/acolhimento/infrastructure/config/ResilientMethodsConfig.java
++++ b/src/main/java/com/humanizar/acolhimento/infrastructure/config/ResilientMethodsConfig.java
+@@ -8,15 +8,20 @@ import java.lang.annotation.Target;
+ import java.lang.reflect.Method;
+ 
+ import org.springframework.context.annotation.Configuration;
++import org.springframework.context.annotation.ImportRuntimeHints;
+ import org.springframework.dao.RecoverableDataAccessException;
+ import org.springframework.dao.TransientDataAccessException;
+ import org.springframework.resilience.annotation.Retryable;
+ import org.springframework.resilience.retry.MethodRetryPredicate;
+ import org.springframework.transaction.CannotCreateTransactionException;
++import org.springframework.aot.hint.MemberCategory;
++import org.springframework.aot.hint.RuntimeHints;
++import org.springframework.aot.hint.RuntimeHintsRegistrar;
+ 
+ import jakarta.persistence.QueryTimeoutException;
+ 
+ @Configuration
++@ImportRuntimeHints(ResilientMethodsConfig.ResilientMethodsRuntimeHints.class)
+ public class ResilientMethodsConfig {
+ 
+     public static final long RETRIEVE_MAX_RETRIES = 2L;
+@@ -46,4 +51,14 @@ public class ResilientMethodsConfig {
+             return false;
+         }
+     }
++
++    public static class ResilientMethodsRuntimeHints implements RuntimeHintsRegistrar {
++
++        @Override
++        public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
++            hints.reflection().registerType(
++                    RetrieveTransientRetryPredicate.class,
++                    MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
++        }
++    }
+ }
+diff --git a/src/test/java/com/humanizar/acolhimento/application/dto/EnvelopeDTODeserializationTest.java b/src/test/java/com/humanizar/acolhimento/application/dto/EnvelopeDTODeserializationTest.java
+index ce039f9..d99d375 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/dto/EnvelopeDTODeserializationTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/dto/EnvelopeDTODeserializationTest.java
+@@ -23,7 +23,6 @@ class EnvelopeDTODeserializationTest {
+   private ObjectMapper objectMapper;
+ 
+   @BeforeEach
+-  @SuppressWarnings("unused")
+   void setUp() {
+     objectMapper = new ObjectMapperConfig().objectMapper();
+   }
+diff --git a/src/test/java/com/humanizar/acolhimento/application/dto/OutboundEnvelopeDTOSerializationTest.java b/src/test/java/com/humanizar/acolhimento/application/dto/OutboundEnvelopeDTOSerializationTest.java
+index a08dcbf..73bd2cd 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/dto/OutboundEnvelopeDTOSerializationTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/dto/OutboundEnvelopeDTOSerializationTest.java
+@@ -24,7 +24,6 @@ class OutboundEnvelopeDTOSerializationTest {
+         private ObjectMapper objectMapper;
+ 
+         @BeforeEach
+-        @SuppressWarnings("unused")
+         void setUp() {
+                 objectMapper = new ObjectMapperConfig().objectMapper();
+         }
+diff --git a/src/test/java/com/humanizar/acolhimento/application/dto/ProcessingResultCallbackDTODeserializationTest.java b/src/test/java/com/humanizar/acolhimento/application/dto/ProcessingResultCallbackDTODeserializationTest.java
+index 74126f0..9f8d17b 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/dto/ProcessingResultCallbackDTODeserializationTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/dto/ProcessingResultCallbackDTODeserializationTest.java
+@@ -17,7 +17,6 @@ class ProcessingResultCallbackDTODeserializationTest {
+     private ObjectMapper objectMapper;
+ 
+     @BeforeEach
+-    @SuppressWarnings("unused")
+     void setUp() {
+         objectMapper = new ObjectMapperConfig().objectMapper();
+     }
+diff --git a/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoDeleteServiceTest.java b/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoDeleteServiceTest.java
+index 49f8e74..8733791 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoDeleteServiceTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoDeleteServiceTest.java
+@@ -49,30 +49,43 @@ class AcolhimentoDeleteServiceTest {
+ 
+     @Mock
+     private RetrieveAcolhimentoUseCase findAcolhimentoByPatientIdRetrieveUseCase;
++
+     @Mock
+     private RetrieveNucleoPatientUseCase findNucleoPatientByPatientIdRetrieveUseCase;
++
+     @Mock
+     private RetrieveNucleoPatientResponsavelUseCase findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase;
++
+     @Mock
+     private InboundDeleteContextMapper inboundDeleteContextMapper;
++
+     @Mock
+     private CreatePendingAcolhimentoUseCase createPendingAcolhimentoUseCase;
++
+     @Mock
+     private DeleteNucleoPatientResponsavelUseCase deleteNucleoPatientResponsavelUseCase;
++
+     @Mock
+     private DeleteNucleoPatientUseCase deleteNucleoPatientUseCase;
++
+     @Mock
+     private DeleteAcolhimentoUseCase deleteAcolhimentoUseCase;
++
+     @Mock
+     private DeleteOutboxCommandUseCase deleteOutboxCommandUseCase;
++
+     @Mock
+     private DeleteProgramaUseCase deleteProgramaUseCase;
++
+     @Mock
+     private ValidateDeleteProgressUseCase validateDeleteProgressUseCase;
++
+     @Mock
+     private MarkPendingCreateUseCase markPendingCreateUseCase;
++
+     @Mock
+     private FindPendingByEventIdUseCase findPendingByEventIdUseCase;
++
+     @Mock
+     private FindTargetsByEventIdUseCase findTargetsByEventIdUseCase;
+ 
+@@ -155,7 +168,8 @@ class AcolhimentoDeleteServiceTest {
+                 Status.ON_HOLD);
+ 
+         when(findPendingByEventIdUseCase.execute(eventId))
+-                .thenReturn(Optional.of(pendingDelete), Optional.of(pendingDelete));
++                .thenReturn(Optional.of(pendingDelete))
++                .thenReturn(Optional.of(pendingDelete));
+         when(findTargetsByEventIdUseCase.execute(eventId))
+                 .thenReturn(List.of(programaOnHold));
+ 
+@@ -176,7 +190,8 @@ class AcolhimentoDeleteServiceTest {
+         PendingAcolhimento afterFinalize = pending(eventId, patientId, Status.SUCCESS);
+ 
+         when(findPendingByEventIdUseCase.execute(eventId))
+-                .thenReturn(Optional.of(firstRead), Optional.of(afterFinalize));
++                .thenReturn(Optional.of(firstRead))
++                .thenReturn(Optional.of(afterFinalize));
+ 
+         service.handlePostCallbackSaga(eventId, TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, "PROCESSED");
+ 
+diff --git a/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoRetrieveServiceTest.java b/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoRetrieveServiceTest.java
+index 2512c56..9770c84 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoRetrieveServiceTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/service/AcolhimentoRetrieveServiceTest.java
+@@ -45,7 +45,6 @@ class AcolhimentoRetrieveServiceTest {
+         private AcolhimentoRetrieveService service;
+ 
+         @BeforeEach
+-        @SuppressWarnings("unused")
+         void setUp() {
+                 service = new AcolhimentoRetrieveService(
+                                 findAcolhimentoByPatientIdRetrieveUseCase,
+diff --git a/src/test/java/com/humanizar/acolhimento/application/usecase/update/UpdateOutboxCommandUseCaseTest.java b/src/test/java/com/humanizar/acolhimento/application/usecase/update/UpdateOutboxCommandUseCaseTest.java
+index 1c21aca..2b54fea 100644
+--- a/src/test/java/com/humanizar/acolhimento/application/usecase/update/UpdateOutboxCommandUseCaseTest.java
++++ b/src/test/java/com/humanizar/acolhimento/application/usecase/update/UpdateOutboxCommandUseCaseTest.java
+@@ -51,7 +51,6 @@ class UpdateOutboxCommandUseCaseTest {
+         private UpdateOutboxCommandUseCase useCase;
+ 
+         @BeforeEach
+-        @SuppressWarnings("unused")
+         void setUp() {
+                 useCase = new UpdateOutboxCommandUseCase(
+                                 outboxEventPort,
+diff --git a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoCreateControllerTest.java b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoCreateControllerTest.java
+index 7084320..1f67166 100644
+--- a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoCreateControllerTest.java
++++ b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoCreateControllerTest.java
+@@ -31,7 +31,6 @@ class AcolhimentoCreateControllerTest {
+   private MockMvc mockMvc;
+ 
+   @BeforeEach
+-  @SuppressWarnings("unused")
+   void setUp() {
+     AcolhimentoCreateController controller = new AcolhimentoCreateController(
+         acolhimentoCreateService, new InboundEnvelopeMapper());
+diff --git a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoDeleteControllerTest.java b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoDeleteControllerTest.java
+index 10fe4e7..826b11e 100644
+--- a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoDeleteControllerTest.java
++++ b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoDeleteControllerTest.java
+@@ -32,7 +32,6 @@ class AcolhimentoDeleteControllerTest {
+     private MockMvc mockMvc;
+ 
+     @BeforeEach
+-    @SuppressWarnings("unused")
+     void setUp() {
+         AcolhimentoDeleteController controller = new AcolhimentoDeleteController(
+                 acolhimentoDeleteService, new InboundEnvelopeMapper());
+diff --git a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoRetrieveControllerTest.java b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoRetrieveControllerTest.java
+index 1c25705..6242660 100644
+--- a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoRetrieveControllerTest.java
++++ b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoRetrieveControllerTest.java
+@@ -43,7 +43,6 @@ class AcolhimentoRetrieveControllerTest {
+         private MockMvc mockMvc;
+ 
+         @BeforeEach
+-        @SuppressWarnings("unused")
+         void setUp() {
+                 AcolhimentoRetrieveController controller = new AcolhimentoRetrieveController(
+                                 acolhimentoRetrieveService,
+diff --git a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoUpdateControllerTest.java b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoUpdateControllerTest.java
+index fda3e06..7ce25de 100644
+--- a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoUpdateControllerTest.java
++++ b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/AcolhimentoUpdateControllerTest.java
+@@ -35,7 +35,6 @@ class AcolhimentoUpdateControllerTest {
+   private MockMvc mockMvc;
+ 
+   @BeforeEach
+-  @SuppressWarnings("unused")
+   void setUp() {
+     AcolhimentoUpdateController controller = new AcolhimentoUpdateController(
+         acolhimentoUpdateService, new InboundEnvelopeMapper());
+diff --git a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/handler/AcolhimentoExceptionHandlerTest.java b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/handler/AcolhimentoExceptionHandlerTest.java
+index 12237c1..96cbcbd 100644
+--- a/src/test/java/com/humanizar/acolhimento/infrastructure/controller/handler/AcolhimentoExceptionHandlerTest.java
++++ b/src/test/java/com/humanizar/acolhimento/infrastructure/controller/handler/AcolhimentoExceptionHandlerTest.java
+@@ -18,7 +18,6 @@ class AcolhimentoExceptionHandlerTest {
+     private MockMvc mockMvc;
+ 
+     @BeforeEach
+-    @SuppressWarnings("unused")
+     void setUp() {
+         mockMvc = MockMvcBuilders.standaloneSetup(new ThrowingController())
+                 .setControllerAdvice(new AcolhimentoExceptionHandler())
+@@ -41,7 +40,6 @@ class AcolhimentoExceptionHandlerTest {
+     static class ThrowingController {
+ 
+         @GetMapping("/test/advice")
+-        @SuppressWarnings("unused")
+         String fail() {
+             throw new AcolhimentoException(
+                     ReasonCode.DUPLICATE_PATIENT,

@@ -51,7 +51,6 @@ class UpdateOutboxCommandUseCaseTest {
         private UpdateOutboxCommandUseCase useCase;
 
         @BeforeEach
-        @SuppressWarnings("unused")
         void setUp() {
                 useCase = new UpdateOutboxCommandUseCase(
                                 outboxEventPort,

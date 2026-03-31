@@ -45,7 +45,6 @@ class AcolhimentoRetrieveServiceTest {
         private AcolhimentoRetrieveService service;
 
         @BeforeEach
-        @SuppressWarnings("unused")
         void setUp() {
                 service = new AcolhimentoRetrieveService(
                                 findAcolhimentoByPatientIdRetrieveUseCase,

@@ -18,7 +18,6 @@ class AcolhimentoExceptionHandlerTest {
     private MockMvc mockMvc;
 
     @BeforeEach
-    @SuppressWarnings("unused")
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new ThrowingController())
                 .setControllerAdvice(new AcolhimentoExceptionHandler())
@@ -41,7 +40,6 @@ class AcolhimentoExceptionHandlerTest {
     static class ThrowingController {
 
         @GetMapping("/test/advice")
-        @SuppressWarnings("unused")
         String fail() {
             throw new AcolhimentoException(
                     ReasonCode.DUPLICATE_PATIENT,

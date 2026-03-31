@@ -43,7 +43,6 @@ class AcolhimentoRetrieveControllerTest {
         private MockMvc mockMvc;
 
         @BeforeEach
-        @SuppressWarnings("unused")
         void setUp() {
                 AcolhimentoRetrieveController controller = new AcolhimentoRetrieveController(
                                 acolhimentoRetrieveService,

@@ -31,7 +31,6 @@ class AcolhimentoCreateControllerTest {
   private MockMvc mockMvc;
 
   @BeforeEach
-  @SuppressWarnings("unused")
   void setUp() {
     AcolhimentoCreateController controller = new AcolhimentoCreateController(
         acolhimentoCreateService, new InboundEnvelopeMapper());

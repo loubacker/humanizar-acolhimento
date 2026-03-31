@@ -32,7 +32,6 @@ class AcolhimentoDeleteControllerTest {
     private MockMvc mockMvc;
 
     @BeforeEach
-    @SuppressWarnings("unused")
     void setUp() {
         AcolhimentoDeleteController controller = new AcolhimentoDeleteController(
                 acolhimentoDeleteService, new InboundEnvelopeMapper());

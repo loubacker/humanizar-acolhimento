@@ -17,7 +17,6 @@ class ProcessingResultCallbackDTODeserializationTest {
     private ObjectMapper objectMapper;
 
     @BeforeEach
-    @SuppressWarnings("unused")
     void setUp() {
         objectMapper = new ObjectMapperConfig().objectMapper();
     }

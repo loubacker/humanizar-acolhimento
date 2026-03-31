@@ -8,15 +8,20 @@ import java.lang.annotation.Target;
 import java.lang.reflect.Method;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.resilience.annotation.Retryable;
 import org.springframework.resilience.retry.MethodRetryPredicate;
 import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
 import jakarta.persistence.QueryTimeoutException;
 
 @Configuration
+@ImportRuntimeHints(ResilientMethodsConfig.ResilientMethodsRuntimeHints.class)
 public class ResilientMethodsConfig {
 
     public static final long RETRIEVE_MAX_RETRIES = 2L;
@@ -44,6 +49,16 @@ public class ResilientMethodsConfig {
                 current = current.getCause();
             }
             return false;
+        }
+    }
+
+    public static class ResilientMethodsRuntimeHints implements RuntimeHintsRegistrar {
+
+        @Override
+        public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+            hints.reflection().registerType(
+                    RetrieveTransientRetryPredicate.class,
+                    MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
         }
     }
 }

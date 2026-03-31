@@ -49,30 +49,43 @@ class AcolhimentoDeleteServiceTest {
 
     @Mock
     private RetrieveAcolhimentoUseCase findAcolhimentoByPatientIdRetrieveUseCase;
+
     @Mock
     private RetrieveNucleoPatientUseCase findNucleoPatientByPatientIdRetrieveUseCase;
+
     @Mock
     private RetrieveNucleoPatientResponsavelUseCase findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase;
+
     @Mock
     private InboundDeleteContextMapper inboundDeleteContextMapper;
+
     @Mock
     private CreatePendingAcolhimentoUseCase createPendingAcolhimentoUseCase;
+
     @Mock
     private DeleteNucleoPatientResponsavelUseCase deleteNucleoPatientResponsavelUseCase;
+
     @Mock
     private DeleteNucleoPatientUseCase deleteNucleoPatientUseCase;
+
     @Mock
     private DeleteAcolhimentoUseCase deleteAcolhimentoUseCase;
+
     @Mock
     private DeleteOutboxCommandUseCase deleteOutboxCommandUseCase;
+
     @Mock
     private DeleteProgramaUseCase deleteProgramaUseCase;
+
     @Mock
     private ValidateDeleteProgressUseCase validateDeleteProgressUseCase;
+
     @Mock
     private MarkPendingCreateUseCase markPendingCreateUseCase;
+
     @Mock
     private FindPendingByEventIdUseCase findPendingByEventIdUseCase;
+
     @Mock
     private FindTargetsByEventIdUseCase findTargetsByEventIdUseCase;
 
@@ -155,7 +168,8 @@ class AcolhimentoDeleteServiceTest {
                 Status.ON_HOLD);
 
         when(findPendingByEventIdUseCase.execute(eventId))
-                .thenReturn(Optional.of(pendingDelete), Optional.of(pendingDelete));
+                .thenReturn(Optional.of(pendingDelete))
+                .thenReturn(Optional.of(pendingDelete));
         when(findTargetsByEventIdUseCase.execute(eventId))
                 .thenReturn(List.of(programaOnHold));
 
@@ -176,7 +190,8 @@ class AcolhimentoDeleteServiceTest {
         PendingAcolhimento afterFinalize = pending(eventId, patientId, Status.SUCCESS);
 
         when(findPendingByEventIdUseCase.execute(eventId))
-                .thenReturn(Optional.of(firstRead), Optional.of(afterFinalize));
+                .thenReturn(Optional.of(firstRead))
+                .thenReturn(Optional.of(afterFinalize));
 
         service.handlePostCallbackSaga(eventId, TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, "PROCESSED");
 
