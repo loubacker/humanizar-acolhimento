@@ -31,14 +31,7 @@ public class AcolhimentoExceptionHandler {
         String path = request != null ? request.getRequestURI() : null;
         String correlationId = exception.getCorrelationId();
 
-        log.error(
-                "Erro no processamento HTTP. reasonCode={}, status={}, correlationId={}, path={}, causa={}",
-                reasonCode,
-                status,
-                correlationId,
-                path,
-                rootCauseMessage(exception),
-                exception);
+        logException(status, reasonCode, correlationId, path, exception);
 
         AcolhimentoErrorResponseDTO body = new AcolhimentoErrorResponseDTO(
                 status,
@@ -54,6 +47,23 @@ public class AcolhimentoExceptionHandler {
     private HttpStatus resolveStatus(int statusCode) {
         HttpStatus status = HttpStatus.resolve(statusCode);
         return status != null ? status : HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+
+    private void logException(
+            int status,
+            String reasonCode,
+            String correlationId,
+            String path,
+            AcolhimentoException exception) {
+        String message = "Erro no processamento HTTP. reasonCode={}, status={}, correlationId={}, path={}, causa={}";
+        String rootCauseMessage = rootCauseMessage(exception);
+
+        if (status >= 500) {
+            log.error(message, reasonCode, status, correlationId, path, rootCauseMessage, exception);
+            return;
+        }
+
+        log.warn(message, reasonCode, status, correlationId, path, rootCauseMessage);
     }
 
     private String rootCauseMessage(Throwable throwable) {
