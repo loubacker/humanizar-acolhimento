@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.humanizar.acolhimento.application.inbound.dto.InboundContextDTO;
+import com.humanizar.acolhimento.application.inbound.dto.InboundDeleteContextDTO;
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
 import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
@@ -22,6 +24,14 @@ import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDele
 import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoPatientDTO;
 import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoResponsavelDTO;
+import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralListDTO;
+import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralPageDTO;
+import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralSnapshotDTO;
+import com.humanizar.acolhimento.application.outbound.dto.central.PendingTargetStatusDTO;
+import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoCreateResponseDTO;
+import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoDeleteResponseDTO;
+import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoErrorResponseDTO;
+import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoUpdateResponseDTO;
 
 @Configuration
 @ImportRuntimeHints(ObjectMapperConfig.ObjectMapperRuntimeHints.class)
@@ -45,12 +55,22 @@ public class ObjectMapperConfig {
             registerJsonBinding(hints, AcolhimentoDeleteDTO.class);
             registerJsonBinding(hints, NucleoPatientDTO.class);
             registerJsonBinding(hints, NucleoResponsavelDTO.class);
+            registerJsonBinding(hints, InboundContextDTO.class);
+            registerJsonBinding(hints, InboundDeleteContextDTO.class);
             registerJsonBinding(hints, CallbackDTO.class);
             registerJsonBinding(hints, OutboundEnvelopeDTO.class);
             registerJsonBinding(hints, AcolhimentoCommandDTO.class);
             registerJsonBinding(hints, AcolhimentoCommandDeletedDTO.class);
             registerJsonBinding(hints, OutboundNucleoPatientDTO.class);
             registerJsonBinding(hints, OutboundNucleoResponsavelDTO.class);
+            registerJsonBinding(hints, PendingCentralListDTO.class);
+            registerJsonBinding(hints, PendingCentralPageDTO.class);
+            registerJsonBinding(hints, PendingCentralSnapshotDTO.class);
+            registerJsonBinding(hints, PendingTargetStatusDTO.class);
+            registerJsonBinding(hints, AcolhimentoCreateResponseDTO.class);
+            registerJsonBinding(hints, AcolhimentoDeleteResponseDTO.class);
+            registerJsonBinding(hints, AcolhimentoUpdateResponseDTO.class);
+            registerJsonBinding(hints, AcolhimentoErrorResponseDTO.class);
         }
 
         private void registerJsonBinding(RuntimeHints hints, Class<?> type) {
