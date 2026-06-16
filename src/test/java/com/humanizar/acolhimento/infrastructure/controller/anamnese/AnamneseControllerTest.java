@@ -1,4 +1,4 @@
-package com.humanizar.acolhimento.infrastructure.controller;
+package com.humanizar.acolhimento.infrastructure.controller.anamnese;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -27,7 +27,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.humanizar.acolhimento.application.http.dto.anamnese.AnamneseDTO;
-import com.humanizar.acolhimento.application.http.dto.envelop.HttpEnvelopeDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoAnamneseService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -35,7 +34,7 @@ import com.humanizar.acolhimento.infrastructure.controller.dto.SuccessResponseDT
 import com.humanizar.acolhimento.infrastructure.controller.handler.AcolhimentoExceptionHandler;
 
 @ExtendWith(MockitoExtension.class)
-class AcolhimentoAnamneseControllerTest {
+class AnamneseControllerTest {
 
     private static final UUID PATIENT_ID = UUID.fromString("0f9c5a3a-6c8b-4f13-b1f4-9f3f0a98d9bb");
     private static final UUID NUCLEO_ID = UUID.fromString("c1a7f980-d466-4e5b-99ae-3d8c12b5d2cc");
@@ -47,7 +46,7 @@ class AcolhimentoAnamneseControllerTest {
 
     @BeforeEach
     void setUp() {
-        AcolhimentoAnamneseController controller = new AcolhimentoAnamneseController(acolhimentoAnamneseService);
+        AnamneseController controller = new AnamneseController(acolhimentoAnamneseService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new AcolhimentoExceptionHandler())
                 .build();

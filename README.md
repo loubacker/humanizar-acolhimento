@@ -3,7 +3,7 @@
   <p>API interna protegida para o fluxo de acolhimento do paciente no ecossistema Humanizar.</p>
 
   <img alt="Java" src="https://img.shields.io/badge/Java-25-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" />
-  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring_Boot-4.0.4-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" />
+  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring_Boot-4.0.5-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" />
   <img alt="GraalVM" src="https://img.shields.io/badge/GraalVM_Native-25-E76F00?style=for-the-badge&logo=oracle&logoColor=white" />
   <img alt="RabbitMQ" src="https://img.shields.io/badge/RabbitMQ-%23FF6600.svg?style=for-the-badge&logo=rabbitmq&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
@@ -20,6 +20,8 @@ Serviço orientado a EDA, com API HTTP interna protegida. Processa comandos de a
 - Outbox transacional para publicação confiável de comandos RabbitMQ.
 - Controle de consistência eventual com `pending_acolhimento` e `pending_target_status`.
 - Callback inbound com idempotência por `processed_event`.
+- Reconciliação ativa de pendências por worker de recall (re-emite comandos não confirmados).
+- Anamnese local por núcleo (CRUD próprio), auditada via outbox sem entrega downstream.
 - ACK/NACK manual do RabbitMQ com política explícita por tipo de erro.
 - Execução otimizada com Virtual Threads e opção de runtime em binário nativo (GraalVM Native Image).
 
@@ -35,12 +37,23 @@ Base path: `/api/v1/acolhimento`
     - Body obrigatório: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
     - Regra obrigatória: `path.patientId == payload.patientId`.
 - `DELETE /delete/{patientId}`
-    - Remove acolhimento e gera o comando outbound `cmd.acolhimento.deleted.v1`.
+    - Remove o acolhimento via remoção ordenada: `cmd.acolhimento.deleted.v2` (núcleo) e, após o callback, `cmd.acolhimento.deleted.v1` (programa).
     - Body obrigatório: `InboundEnvelopeDTO<AcolhimentoDeleteDTO>`.
     - Regra obrigatória: `path.patientId == payload.patientId`.
 - `GET /{patientId}`
-    - Retorna os dados atuais do acolhimento do paciente.
+    - Retorna os núcleos do paciente com responsáveis e anamnese embutida (0..1 por núcleo).
     - Retry automático em falhas transientes de banco (`@Retry`, max 2, timeout 30s).
+
+### Anamnese (CRUD local por núcleo)
+
+Base path: `/api/v1/acolhimento/anamnese`
+
+- `POST /{patientId}/{nucleoId}` — registra a anamnese do núcleo.
+- `PUT /{patientId}/{nucleoId}` — atualiza a anamnese.
+- `DELETE /{patientId}/{nucleoId}` — remove a anamnese.
+- `GET /{patientId}/{nucleoId}` — retorna a anamnese do núcleo.
+
+Mutações exigem `HttpEnvelopeDTO<AnamneseDTO>`. A anamnese é local (não trafega downstream) e apenas auditada (outbox `AUDIT`).
 
 ## 🔄 Comunicação Assíncrona (RabbitMQ)
 
@@ -49,9 +62,10 @@ Base path: `/api/v1/acolhimento`
 **Exchange `humanizar.acolhimento.command`**
 - `cmd.acolhimento.created.v1`
 - `cmd.acolhimento.updated.v1`
-- `cmd.acolhimento.deleted.v1`
+- `cmd.acolhimento.deleted.v2` (núcleo)
+- `cmd.acolhimento.deleted.v1` (programa)
 
-Contrato publicado: `OutboundEnvelopeDTO<T>` (metadados EDA + payload tipado).
+Contrato publicado: `OutboundEnvelopeDTO<T>` (metadados EDA + payload tipado). DELETE é uma remoção ordenada: `deleted.v2` ao núcleo e, após o callback, `deleted.v1` ao programa.
 
 ### Inbound — Callbacks do Núcleo de Relacionamento
 
@@ -106,8 +120,34 @@ Implementação central: `RabbitAcknowledgementConfig`.
 - `PUBLISHED`
 - `FAILED`
 - `DEAD`
+- `AUDIT` (auditoria local da anamnese; nunca publicado)
 
 Com retentativa por `OutboxRetryPolicy` e controle de ownership/fencing por `instanceId`.
+
+## 🛠️ Workers em Background
+
+### OutboxRelayWorker (5s)
+
+- Faz claim de eventos em `NEW`, `FAILED` e `LOCKED`.
+- Aplica lock ownership por `instanceId` (fencing).
+- Publica de forma assíncrona com controle de paralelismo.
+
+### OutboxEventProcessor
+
+Transições de status:
+- sucesso: `LOCKED -> PUBLISHED`
+- falha com retry: `LOCKED -> FAILED` (com `nextRetryAt`)
+- tentativas esgotadas: `LOCKED -> DEAD`
+
+### PendingRecallWorker (30s)
+
+- Re-dirige pendências presas (`pending_target_status` em `PENDING` e vencidas) resetando o outbox para `NEW`.
+- Backoff por `RecallPolicy`; escala para `ERROR` após o limite de tentativas.
+
+### RetentionWorker (1h)
+
+- Remove outbox antigo (`PUBLISHED` e `DEAD`) com mais de 48h.
+- Remove `processed_event` antigo com mais de 90 dias.
 
 ## 🔐 Segurança
 
@@ -120,10 +160,10 @@ Com retentativa por `OutboxRetryPolicy` e controle de ownership/fencing por `ins
 ```text
 src/main/java/com/humanizar/acolhimento/
 |-- application/
-|   |-- catalog/                    # ExchangeCatalog, QueueCatalog, RoutingKeyCatalog, TargetCatalog
-|   |-- inbound/                    # DTOs e mappers de envelope/payload
-|   |-- outbound/                   # DTOs e mappers de comando/callback
-|   |-- service/                    # orquestracao create/update/delete/retrieve/callback
+|   |-- catalog/                    # Exchange/Queue/RoutingKey/Target/ProducerCatalog
+|   |-- http/                       # DTOs, mappers e validacao de envelope/payload
+|   |-- messaging/                  # inbound (callbacks) e outbound (comandos/audit)
+|   |-- service/                    # orquestracao create/update/delete/retrieve/callback/anamnese
 |   `-- usecase/                    # regras de aplicacao por contexto
 |-- domain/                         # modelos, enums, ports, exceptions
 `-- infrastructure/                 # adapters, controllers, rabbit, outbox, persistence

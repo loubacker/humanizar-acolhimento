@@ -1,4 +1,4 @@
-package com.humanizar.acolhimento.infrastructure.controller;
+package com.humanizar.acolhimento.infrastructure.controller.anamnese;
 
 import java.util.UUID;
 
@@ -23,13 +23,13 @@ import com.humanizar.acolhimento.infrastructure.controller.dto.SuccessResponseDT
 
 @RestController
 @RequestMapping("/api/v1/acolhimento/anamnese")
-public class AcolhimentoAnamneseController {
+public class AnamneseController {
 
-    private static final Logger log = LoggerFactory.getLogger(AcolhimentoAnamneseController.class);
+    private static final Logger log = LoggerFactory.getLogger(AnamneseController.class);
 
     private final AcolhimentoAnamneseService acolhimentoAnamneseService;
 
-    public AcolhimentoAnamneseController(AcolhimentoAnamneseService acolhimentoAnamneseService) {
+    public AnamneseController(AcolhimentoAnamneseService acolhimentoAnamneseService) {
         this.acolhimentoAnamneseService = acolhimentoAnamneseService;
     }
 

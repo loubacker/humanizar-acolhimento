@@ -18,7 +18,9 @@ RUN ./mvnw -Pnative -DskipTests dependency:go-offline
 COPY src ./src
 
 # Compila a Aplicação para um Binário Nativo
-RUN ./mvnw -Pnative -DskipTests native:compile
+ARG AUTH_SERVER_URL
+RUN AUTH_SERVER_URL="${AUTH_SERVER_URL}" \
+    ./mvnw -Pnative -DskipTests native:compile
 
 # -- Stage Runtime (Debian Slim) --
 FROM debian:bookworm-slim
