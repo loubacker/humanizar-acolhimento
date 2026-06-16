@@ -41,13 +41,10 @@ public class OutboxEventAdapter implements OutboxEventPort {
     }
 
     @Override
-    public List<OutboxEvent> findByStatusInAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
-            List<OutboxStatus> status, LocalDateTime cutoff) {
-        return outboxEventRepository
-                .findByStatusInAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(status, cutoff)
-                .stream()
-                .map(this::toDomain)
-                .toList();
+    @Transactional(propagation = Propagation.REQUIRED)
+    public Optional<OutboxEvent> findByEventIdForUpdate(UUID eventId) {
+        return outboxEventRepository.lockByEventId(eventId)
+                .map(this::toDomain);
     }
 
     @Override

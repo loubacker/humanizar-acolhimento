@@ -12,11 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDTO;
-import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDeletedDTO;
-import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoResponsavelDTO;
-import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.outbound.dto.OutboundNucleoPatientDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.AcolhimentoCommandDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.AcolhimentoCommandDeletedDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.OutboundNucleoResponsavelDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.OutboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.OutboundNucleoPatientDTO;
 import com.humanizar.acolhimento.infrastructure.config.ObjectMapperConfig;
 
 class OutboundEnvelopeDTOSerializationTest {

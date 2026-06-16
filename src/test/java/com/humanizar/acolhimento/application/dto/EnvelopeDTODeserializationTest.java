@@ -3,9 +3,7 @@ package com.humanizar.acolhimento.application.dto;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -13,9 +11,9 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
-import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.http.dto.acolhimento.AcolhimentoDeleteDTO;
+import com.humanizar.acolhimento.application.http.dto.acolhimento.InboundAcolhimentoDTO;
+import com.humanizar.acolhimento.application.http.dto.envelop.HttpEnvelopeDTO;
 import com.humanizar.acolhimento.infrastructure.config.ObjectMapperConfig;
 
 class EnvelopeDTODeserializationTest {
@@ -29,8 +27,8 @@ class EnvelopeDTODeserializationTest {
 
   @Test
   void shouldDeserializeCreateRequestedCommandEnvelope() throws Exception {
-    InboundEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(createJson(),
-        new TypeReference<InboundEnvelopeDTO<InboundAcolhimentoDTO>>() {
+    HttpEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(createJson(),
+        new TypeReference<HttpEnvelopeDTO<InboundAcolhimentoDTO>>() {
         });
 
     assertEquals(UUID.fromString("f5e56969-d6c4-4b89-8ca8-403b6d3a0a20"), command.correlationId());
@@ -38,8 +36,6 @@ class EnvelopeDTODeserializationTest {
     assertEquals(LocalDateTime.of(2026, 3, 2, 14, 0, 0), command.occurredAt());
     assertNotNull(command.payload());
     assertEquals(UUID.fromString("0f9c5a3a-6c8b-4f13-b1f4-9f3f0a98d9bb"), command.payload().patientId());
-    assertEquals(LocalDate.of(2026, 3, 2), command.payload().dataAnamnese());
-    assertEquals(LocalTime.of(11, 35), command.payload().horaAnamnese());
     assertEquals(1, command.payload().nucleoPatient().size());
     assertEquals(UUID.fromString("c1a7f980-d466-4e5b-99ae-3d8c12b5d2cc"),
         command.payload().nucleoPatient().getFirst().nucleoId());
@@ -48,21 +44,19 @@ class EnvelopeDTODeserializationTest {
 
   @Test
   void shouldDeserializeUpdateRequestedCommandEnvelope() throws Exception {
-    InboundEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(updateJson(),
-        new TypeReference<InboundEnvelopeDTO<InboundAcolhimentoDTO>>() {
+    HttpEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(updateJson(),
+        new TypeReference<HttpEnvelopeDTO<InboundAcolhimentoDTO>>() {
         });
 
     assertEquals(UUID.fromString("f5e56969-d6c4-4b89-8ca8-403b6d3a0a20"), command.correlationId());
-    assertEquals(LocalDate.of(2026, 3, 2), command.payload().dataAnamnese());
-    assertEquals(LocalTime.of(11, 45), command.payload().horaAnamnese());
-    assertEquals("Paciente com ajuste de observacao.", command.payload().observacoes());
+    assertEquals(UUID.fromString("0f9c5a3a-6c8b-4f13-b1f4-9f3f0a98d9bb"), command.payload().patientId());
     assertEquals(1, command.payload().nucleoPatient().size());
   }
 
   @Test
   void shouldDeserializeDeleteRequestedCommandEnvelope() throws Exception {
-    InboundEnvelopeDTO<AcolhimentoDeleteDTO> command = objectMapper.readValue(deleteJson(),
-        new TypeReference<InboundEnvelopeDTO<AcolhimentoDeleteDTO>>() {
+    HttpEnvelopeDTO<AcolhimentoDeleteDTO> command = objectMapper.readValue(deleteJson(),
+        new TypeReference<HttpEnvelopeDTO<AcolhimentoDeleteDTO>>() {
         });
 
     assertEquals(UUID.fromString("f5e56969-d6c4-4b89-8ca8-403b6d3a0a20"), command.correlationId());
@@ -71,8 +65,8 @@ class EnvelopeDTODeserializationTest {
 
   @Test
   void shouldIgnoreLegacyEnvelopeFieldsWhenPresent() throws Exception {
-    InboundEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(createJsonWithLegacyFields(),
-        new TypeReference<InboundEnvelopeDTO<InboundAcolhimentoDTO>>() {
+    HttpEnvelopeDTO<InboundAcolhimentoDTO> command = objectMapper.readValue(createJsonWithLegacyFields(),
+        new TypeReference<HttpEnvelopeDTO<InboundAcolhimentoDTO>>() {
         });
 
     assertEquals(UUID.fromString("f5e56969-d6c4-4b89-8ca8-403b6d3a0a20"), command.correlationId());

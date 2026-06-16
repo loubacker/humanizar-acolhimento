@@ -1,5 +1,6 @@
 package com.humanizar.acolhimento.domain.port.peding;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +19,8 @@ public interface PendingTargetStatusPort {
     List<PendingTargetStatus> findByEventId(UUID eventId);
 
     List<PendingTargetStatus> findByTargetServiceAndStatus(String targetService, Status status);
+
+    List<PendingTargetStatus> findStaleTargets(Status status, LocalDateTime now, int limit);
 
     void deleteByEventId(UUID eventId);
 }

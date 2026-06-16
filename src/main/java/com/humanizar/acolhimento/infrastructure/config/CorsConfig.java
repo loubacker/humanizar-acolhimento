@@ -20,8 +20,7 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         List<String> allowedOrigins = Arrays.asList(
                 "http://localhost:*",
-                "http://127.0.0.1:*",
-                "http://10.*.*.*:*");
+                "http://127.0.0.1:*");
 
         log.info("Configurando CORS com origins permitidas: {}", allowedOrigins);
 

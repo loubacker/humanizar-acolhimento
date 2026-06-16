@@ -15,15 +15,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
+import com.humanizar.acolhimento.application.http.mapper.HttpEnvelopeMapper;
+import com.humanizar.acolhimento.application.http.mapper.InboundFieldValidator;
 import com.humanizar.acolhimento.application.service.AcolhimentoUpdateService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
-import com.humanizar.acolhimento.infrastructure.controller.dto.AcolhimentoUpdateResponseDTO;
+import com.humanizar.acolhimento.infrastructure.controller.dto.SuccessResponseDTO;
 import com.humanizar.acolhimento.infrastructure.controller.handler.AcolhimentoExceptionHandler;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,7 +39,7 @@ class AcolhimentoUpdateControllerTest {
   @BeforeEach
   void setUp() {
     AcolhimentoUpdateController controller = new AcolhimentoUpdateController(
-        acolhimentoUpdateService, new InboundEnvelopeMapper());
+        acolhimentoUpdateService, new HttpEnvelopeMapper(new InboundFieldValidator()));
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setControllerAdvice(new AcolhimentoExceptionHandler())
         .build();
@@ -46,21 +48,26 @@ class AcolhimentoUpdateControllerTest {
   @Test
   void shouldReturn200OnUpdate() throws Exception {
     UUID patientId = UUID.fromString("0f9c5a3a-6c8b-4f13-b1f4-9f3f0a98d9bb");
-    UUID correlationId = UUID.fromString("f5e56969-d6c4-4b89-8ca8-403b6d3a0a20");
+    String correlationId = "f5e56969-d6c4-4b89-8ca8-403b6d3a0a20";
 
     when(acolhimentoUpdateService.updateByPatientId(eq(patientId), any()))
-        .thenReturn(new AcolhimentoUpdateResponseDTO(
-            "Acolhimento Atualizado com Sucesso para Paciente " + patientId,
-            patientId,
-            correlationId));
+        .thenReturn(new SuccessResponseDTO(
+            "ACOLHIMENTO_UPDATED",
+            correlationId,
+            "Acolhimento atualizado com sucesso",
+            patientId));
 
     mockMvc.perform(put("/api/v1/acolhimento/update/{patientId}", patientId)
         .contentType(MediaType.APPLICATION_JSON)
         .content(validEnvelopeBody(patientId)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.message").value("Acolhimento Atualizado com Sucesso para Paciente " + patientId))
-        .andExpect(jsonPath("$.patientId").value(patientId.toString()))
-        .andExpect(jsonPath("$.correlationId").value(correlationId.toString()));
+        .andExpect(header().string("X-Correlation-ID", correlationId))
+        .andExpect(jsonPath("$.code").value("ACOLHIMENTO_UPDATED"))
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.correlationId").value(correlationId))
+        .andExpect(jsonPath("$.message").value("Acolhimento atualizado com sucesso"))
+        .andExpect(jsonPath("$.data").value(patientId.toString()))
+        .andExpect(jsonPath("$.timestamp").exists());
 
     verify(acolhimentoUpdateService).updateByPatientId(eq(patientId), any());
   }
@@ -81,9 +88,11 @@ class AcolhimentoUpdateControllerTest {
         .contentType(MediaType.APPLICATION_JSON)
         .content(validEnvelopeBody(patientId)))
         .andExpect(status().isBadRequest())
+        .andExpect(header().string("X-Correlation-ID", correlationId))
         .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.error").value("Bad Request"))
         .andExpect(jsonPath("$.reasonCode").value("INBOUND_PATIENT_MISMATCH"))
-        .andExpect(jsonPath("$.correlationId").value(correlationId))
+        .andExpect(jsonPath("$.message").value("path.patientId diverge de payload.patientId"))
         .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/update/" + patientId));
 
     verify(acolhimentoUpdateService).updateByPatientId(eq(patientId), any());
@@ -100,9 +109,6 @@ class AcolhimentoUpdateControllerTest {
           "originIp":"127.0.0.1",
           "payload":{
             "patientId":"%s",
-            "dataAnamnese":"2026-03-02",
-            "horaAnamnese":"11:35:00",
-            "observacoes":"Paciente atualizado.",
             "nucleoPatient":[
               {
                 "nucleoId":"c1a7f980-d466-4e5b-99ae-3d8c12b5d2cc",

@@ -18,14 +18,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
-import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
-import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
+import com.humanizar.acolhimento.application.http.dto.anamnese.AcolhimentoListResponseDTO;
+import com.humanizar.acolhimento.application.http.dto.anamnese.AnamneseDTO;
+import com.humanizar.acolhimento.application.http.dto.anamnese.NucleoComAnamneseDTO;
+import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoResponsavelDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoRetrieveService;
 import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralListService;
 import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralSnapshotService;
-import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
-import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.infrastructure.controller.handler.AcolhimentoExceptionHandler;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,54 +53,56 @@ class AcolhimentoRetrieveControllerTest {
         }
 
         @Test
-        void shouldReturn200WithInboundPayload() throws Exception {
+        void shouldReturn200WithNucleosAndEmbeddedAnamnese() throws Exception {
                 UUID patientId = UUID.fromString("f6bd95b5-d3f4-4f09-aa49-bf192d5ca7a9");
                 UUID nucleoId = UUID.fromString("3fd17f7c-4541-4d31-bf9c-57618cd6f540");
                 UUID responsavelId = UUID.fromString("8ce9ef36-5ea3-41cf-a2f8-89b4c2995236");
 
-                InboundAcolhimentoDTO payload = new InboundAcolhimentoDTO(
+                AcolhimentoListResponseDTO payload = new AcolhimentoListResponseDTO(
                                 patientId,
-                                LocalDate.of(2026, 3, 11),
-                                LocalTime.of(10, 30),
-                                "Observacao de teste",
-                                List.of(new NucleoPatientDTO(
+                                List.of(new NucleoComAnamneseDTO(
                                                 nucleoId,
-                                                List.of(new NucleoResponsavelDTO(responsavelId, "COORDENADOR")))));
+                                                List.of(new NucleoResponsavelDTO(responsavelId, "COORDENADOR")),
+                                                new AnamneseDTO(
+                                                                LocalDate.of(2026, 3, 11),
+                                                                LocalTime.of(10, 30),
+                                                                "Observacao de teste"))));
 
                 when(acolhimentoRetrieveService.findByPatientId(patientId)).thenReturn(payload);
 
                 mockMvc.perform(get("/api/v1/acolhimento/{patientId}", patientId))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.patientId").value(patientId.toString()))
-                                .andExpect(jsonPath("$.dataAnamnese").value("2026-03-11"))
-                                .andExpect(jsonPath("$.horaAnamnese").value("10:30:00"))
-                                .andExpect(jsonPath("$.observacoes").value("Observacao de teste"))
-                                .andExpect(jsonPath("$.nucleoPatient[0].nucleoId").value(nucleoId.toString()))
-                                .andExpect(jsonPath("$.nucleoPatient[0].nucleoPatientResponsavel[0].responsavelId")
+                                .andExpect(jsonPath("$.nucleos[0].nucleoId").value(nucleoId.toString()))
+                                .andExpect(jsonPath("$.nucleos[0].responsaveis[0].responsavelId")
                                                 .value(responsavelId.toString()))
-                                .andExpect(jsonPath("$.nucleoPatient[0].nucleoPatientResponsavel[0].role")
-                                                .value("COORDENADOR"));
+                                .andExpect(jsonPath("$.nucleos[0].responsaveis[0].role").value("COORDENADOR"))
+                                .andExpect(jsonPath("$.nucleos[0].anamnese.dataAnamnese").value("2026-03-11"))
+                                .andExpect(jsonPath("$.nucleos[0].anamnese.horaAnamnese").value("10:30:00"))
+                                .andExpect(jsonPath("$.nucleos[0].anamnese.observacoes").value("Observacao de teste"));
 
                 verify(acolhimentoRetrieveService).findByPatientId(patientId);
         }
 
         @Test
-        void shouldReturn404WhenPatientDoesNotExist() throws Exception {
+        void shouldReturn200WithNullAnamneseWhenNoneRegistered() throws Exception {
                 UUID patientId = UUID.fromString("9a1fd2b6-9da5-4a07-a15f-377acebd57dd");
-                String correlationId = "corr-retrieve-404";
+                UUID nucleoId = UUID.fromString("3fd17f7c-4541-4d31-bf9c-57618cd6f540");
 
-                when(acolhimentoRetrieveService.findByPatientId(patientId))
-                                .thenThrow(new AcolhimentoException(
-                                                ReasonCode.PATIENT_NOT_FOUND,
-                                                correlationId,
-                                                "Paciente nao encontrado"));
+                AcolhimentoListResponseDTO payload = new AcolhimentoListResponseDTO(
+                                patientId,
+                                List.of(new NucleoComAnamneseDTO(
+                                                nucleoId,
+                                                List.of(),
+                                                null)));
+
+                when(acolhimentoRetrieveService.findByPatientId(patientId)).thenReturn(payload);
 
                 mockMvc.perform(get("/api/v1/acolhimento/{patientId}", patientId))
-                                .andExpect(status().isNotFound())
-                                .andExpect(jsonPath("$.status").value(404))
-                                .andExpect(jsonPath("$.reasonCode").value("PATIENT_NOT_FOUND"))
-                                .andExpect(jsonPath("$.correlationId").value(correlationId))
-                                .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/" + patientId));
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.patientId").value(patientId.toString()))
+                                .andExpect(jsonPath("$.nucleos[0].nucleoId").value(nucleoId.toString()))
+                                .andExpect(jsonPath("$.nucleos[0].anamnese").value(org.hamcrest.Matchers.nullValue()));
 
                 verify(acolhimentoRetrieveService).findByPatientId(patientId);
         }

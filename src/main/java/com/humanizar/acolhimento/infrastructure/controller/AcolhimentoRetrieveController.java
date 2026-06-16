@@ -11,9 +11,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
-import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralPageDTO;
-import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralSnapshotDTO;
+import com.humanizar.acolhimento.application.http.dto.anamnese.AcolhimentoListResponseDTO;
+import com.humanizar.acolhimento.application.http.dto.central.PendingCentralListDTO;
+import com.humanizar.acolhimento.application.http.dto.central.PendingCentralSnapshotDTO;
+import com.humanizar.acolhimento.application.http.dto.shared.PaginatedDTO;
 import com.humanizar.acolhimento.application.service.AcolhimentoRetrieveService;
 import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralListService;
 import com.humanizar.acolhimento.application.service.central.AcolhimentoCentralSnapshotService;
@@ -40,21 +41,21 @@ public class AcolhimentoRetrieveController {
 
     @Retry
     @GetMapping("/{patientId}")
-    public ResponseEntity<InboundAcolhimentoDTO> retrieve(@PathVariable UUID patientId) {
+    public ResponseEntity<AcolhimentoListResponseDTO> retrieve(@PathVariable UUID patientId) {
         log.info("Recebido GET /api/v1/acolhimento/{}. operacao=RETRIEVE", patientId);
-        InboundAcolhimentoDTO payload = acolhimentoRetrieveService.findByPatientId(patientId);
+        AcolhimentoListResponseDTO payload = acolhimentoRetrieveService.findByPatientId(patientId);
         log.info("GET /api/v1/acolhimento/{} Concluido com Sucesso", patientId);
         return ResponseEntity.ok(payload);
     }
 
     @Retry
     @GetMapping("/central/{patientId}")
-    public ResponseEntity<PendingCentralPageDTO> listCentral(
+    public ResponseEntity<PaginatedDTO<PendingCentralListDTO>> listCentral(
             @PathVariable UUID patientId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         log.info("Recebido GET /api/v1/acolhimento/central/{}. page={}, size={}", patientId, page, size);
-        PendingCentralPageDTO response = acolhimentoCentralListService.execute(patientId, page, size);
+        PaginatedDTO<PendingCentralListDTO> response = acolhimentoCentralListService.execute(patientId, page, size);
         log.info("GET /api/v1/acolhimento/central/{} Concluido. totalElements={}", patientId, response.totalElements());
         return ResponseEntity.ok(response);
     }

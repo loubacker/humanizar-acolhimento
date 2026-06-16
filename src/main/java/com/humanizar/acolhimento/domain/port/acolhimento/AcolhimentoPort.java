@@ -1,5 +1,6 @@
 package com.humanizar.acolhimento.domain.port.acolhimento;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -9,11 +10,15 @@ public interface AcolhimentoPort {
 
     Acolhimento save(Acolhimento acolhimento);
 
-    Optional<Acolhimento> findByPatientId(UUID patientId);
+    Optional<Acolhimento> findByNucleoPatientId(UUID nucleoPatientId);
 
-    boolean existsByPatientId(UUID patientId);
+    boolean existsByNucleoPatientId(UUID nucleoPatientId);
+
+    List<Acolhimento> findByNucleoPatientIdIn(List<UUID> nucleoPatientIds);
 
     void deleteById(UUID acolhimentoId);
+
+    void deleteByNucleoPatientId(UUID nucleoPatientId);
 
     void deleteByPatientId(UUID patientId);
 }

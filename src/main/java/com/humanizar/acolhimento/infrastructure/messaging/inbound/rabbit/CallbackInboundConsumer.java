@@ -8,11 +8,11 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.humanizar.acolhimento.application.catalog.ConsumerCatalog;
 import com.humanizar.acolhimento.application.catalog.QueueCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
-import com.humanizar.acolhimento.application.outbound.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.mapper.CallbackInboundMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoCallbackService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -24,15 +24,15 @@ public class CallbackInboundConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(CallbackInboundConsumer.class);
 
-    private final ObjectMapper objectMapper;
+    private final CallbackInboundMapper callbackInboundMapper;
     private final AcolhimentoCallbackService acolhimentoCallbackService;
     private final RabbitAcknowledgementConfig rabbitAcknowledgementConfig;
 
     public CallbackInboundConsumer(
-            ObjectMapper objectMapper,
+            CallbackInboundMapper callbackInboundMapper,
             AcolhimentoCallbackService acolhimentoCallbackService,
             RabbitAcknowledgementConfig rabbitAcknowledgementConfig) {
-        this.objectMapper = objectMapper;
+        this.callbackInboundMapper = callbackInboundMapper;
         this.acolhimentoCallbackService = acolhimentoCallbackService;
         this.rabbitAcknowledgementConfig = rabbitAcknowledgementConfig;
     }
@@ -64,42 +64,54 @@ public class CallbackInboundConsumer {
         String queue = message.getMessageProperties().getConsumerQueue();
         String messageId = message.getMessageProperties().getMessageId();
         String routingKey = message.getMessageProperties().getReceivedRoutingKey();
+        CallbackDTO callback = null;
 
-        CallbackDTO callback;
         try {
-            callback = objectMapper.readValue(message.getBody(), CallbackDTO.class);
-        } catch (IOException ex) {
-            rabbitAcknowledgementConfig.nackDeadLetter(
-                    channel,
-                    deliveryTag,
-                    buildContext(queue, messageId, routingKey, null, null));
+            callback = callbackInboundMapper.parse(message.getBody());
+            callbackInboundMapper.validate(callback);
+            acolhimentoCallbackService.processCallback(consumerName, targetService, callback);
+            rabbitAcknowledgementConfig.ack(channel, deliveryTag, context(queue, messageId, routingKey, callback));
+        } catch (AcolhimentoException acolhimentoException) {
+            handleAcolhimentoException(channel, deliveryTag, queue, messageId, routingKey, callback, acolhimentoException);
+        } catch (RuntimeException runtimeException) {
+            rabbitAcknowledgementConfig.nackRetry(channel, deliveryTag, context(queue, messageId, routingKey, callback));
+        }
+    }
+
+    private void handleAcolhimentoException(
+            Channel channel,
+            long deliveryTag,
+            String queue,
+            String messageId,
+            String routingKey,
+            CallbackDTO callback,
+            AcolhimentoException acolhimentoException) throws IOException {
+        String context = context(queue, messageId, routingKey, callback);
+
+        if (acolhimentoException.getReasonCode() == ReasonCode.DUPLICATE_EVENT) {
+            log.info("Callback duplicado confirmado. {}", context);
+            rabbitAcknowledgementConfig.ack(channel, deliveryTag, context);
             return;
         }
 
-        String eventId = callback.eventId() != null ? callback.eventId().toString() : null;
-        String correlationId = callback.correlationId() != null ? callback.correlationId().toString() : null;
-        String context = buildContext(queue, messageId, routingKey, eventId, correlationId);
-
-        try {
-            acolhimentoCallbackService.processCallback(
-                    consumerName,
-                    targetService,
-                    callback);
-            rabbitAcknowledgementConfig.ack(channel, deliveryTag, context);
-        } catch (AcolhimentoException ex) {
-            if (ex.getReasonCode() == ReasonCode.DUPLICATE_EVENT) {
-                log.info("Callback duplicado confirmado. {}", context);
-                rabbitAcknowledgementConfig.ack(channel, deliveryTag, context);
-                return;
-            }
-            if (ex.isRetryable()) {
-                rabbitAcknowledgementConfig.nackRetry(channel, deliveryTag, context);
-                return;
-            }
-            rabbitAcknowledgementConfig.nackDeadLetter(channel, deliveryTag, context);
-        } catch (RuntimeException ex) {
+        if (acolhimentoException.isRetryable()) {
             rabbitAcknowledgementConfig.nackRetry(channel, deliveryTag, context);
+            return;
         }
+
+        rabbitAcknowledgementConfig.nackDeadLetter(channel, deliveryTag, context);
+    }
+
+    private String context(
+            String queue,
+            String messageId,
+            String routingKey,
+            CallbackDTO callback) {
+        String eventId = callback != null && callback.eventId() != null ? callback.eventId().toString() : null;
+        String correlationId = callback != null && callback.correlationId() != null
+                ? callback.correlationId().toString()
+                : null;
+        return buildContext(queue, messageId, routingKey, eventId, correlationId);
     }
 
     private String buildContext(

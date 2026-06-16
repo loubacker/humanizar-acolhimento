@@ -1,29 +1,25 @@
 package com.humanizar.acolhimento.application.usecase.delete;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.humanizar.acolhimento.application.catalog.ExchangeCatalog;
 import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
-import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
-import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDeletedDTO;
-import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.outbound.mapper.OutboundDeleteMapper;
-import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveAcolhimentoUseCase;
+import com.humanizar.acolhimento.application.http.dto.acolhimento.AcolhimentoDeleteDTO;
+import com.humanizar.acolhimento.application.http.dto.envelop.HttpEnvelopeDTO;
+import com.humanizar.acolhimento.application.http.mapper.HttpEnvelopeMapper;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.AcolhimentoCommandDeletedDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.OutboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.factory.CommandOutboxEventFactory;
+import com.humanizar.acolhimento.application.messaging.outbound.mapper.OutboundDeleteMapper;
+import com.humanizar.acolhimento.application.serializer.JsonPayloadSerializer;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
-import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
-import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
@@ -33,31 +29,29 @@ import com.humanizar.acolhimento.domain.port.peding.PendingTargetStatusPort;
 @Service
 public class DeleteProgramaUseCase {
 
-    private static final String PRODUCER_SERVICE = "humanizar-acolhimento";
-    private static final String AGGREGATE_TYPE = "acolhimento";
-    private static final short EVENT_VERSION = 1;
-    private static final int DEFAULT_MAX_ATTEMPTS = 5;
-
     private final OutboxEventPort outboxEventPort;
     private final PendingTargetStatusPort pendingTargetStatusPort;
-    private final RetrieveAcolhimentoUseCase retrieveAcolhimentoUseCase;
-    private final InboundEnvelopeMapper inboundEnvelopeMapper;
+    private final HttpEnvelopeMapper inboundEnvelopeMapper;
     private final OutboundDeleteMapper outboundDeleteMapper;
     private final ObjectMapper objectMapper;
+    private final JsonPayloadSerializer jsonPayloadSerializer;
+    private final CommandOutboxEventFactory commandOutboxEventFactory;
 
     public DeleteProgramaUseCase(
             OutboxEventPort outboxEventPort,
             PendingTargetStatusPort pendingTargetStatusPort,
-            RetrieveAcolhimentoUseCase retrieveAcolhimentoUseCase,
-            InboundEnvelopeMapper inboundEnvelopeMapper,
+            HttpEnvelopeMapper inboundEnvelopeMapper,
             OutboundDeleteMapper outboundDeleteMapper,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            JsonPayloadSerializer jsonPayloadSerializer,
+            CommandOutboxEventFactory commandOutboxEventFactory) {
         this.outboxEventPort = outboxEventPort;
         this.pendingTargetStatusPort = pendingTargetStatusPort;
-        this.retrieveAcolhimentoUseCase = retrieveAcolhimentoUseCase;
         this.inboundEnvelopeMapper = inboundEnvelopeMapper;
         this.outboundDeleteMapper = outboundDeleteMapper;
         this.objectMapper = objectMapper;
+        this.jsonPayloadSerializer = jsonPayloadSerializer;
+        this.commandOutboxEventFactory = commandOutboxEventFactory;
     }
 
     @Transactional
@@ -65,52 +59,33 @@ public class DeleteProgramaUseCase {
         String correlationId = pending.getCorrelationId() != null
                 ? pending.getCorrelationId().toString() : null;
 
-        InboundEnvelopeDTO<AcolhimentoDeleteDTO> validatedSourceEnvelope = loadAndValidateSourceDeleteEnvelope(
+        HttpEnvelopeDTO<AcolhimentoDeleteDTO> validatedSourceEnvelope = loadAndValidateSourceDeleteEnvelope(
                 pending.getEventId(),
                 correlationId);
 
-        Acolhimento acolhimento = retrieveAcolhimentoUseCase
-                .execute(pending.getPatientId(), correlationId);
+        UUID aggregateId = pending.getPatientId();
 
         OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> deleteEnvelope = outboundDeleteMapper
                 .toDeleteCommandEnvelope(
                         validatedSourceEnvelope,
                         pending.getEventId(),
-                        acolhimento.getId());
+                        aggregateId);
 
-        OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> deleteV1Envelope = new OutboundEnvelopeDTO<>(
-                deleteEnvelope.eventId(),
-                deleteEnvelope.correlationId(),
-                deleteEnvelope.producerService(),
-                deleteEnvelope.exchangeName(),
+        OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> deleteV1Envelope = deleteEnvelope
+                .withRoutingKey(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1);
+
+        OutboxEvent outboxEvent = commandOutboxEventFactory.newCommand(
+                UUID.randomUUID(),
+                pending.getCorrelationId(),
                 RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1,
-                deleteEnvelope.aggregateType(),
-                deleteEnvelope.aggregateId(),
-                deleteEnvelope.eventVersion(),
-                deleteEnvelope.occurredAt(),
-                deleteEnvelope.actorId(),
-                deleteEnvelope.userAgent(),
-                deleteEnvelope.originIp(),
-                deleteEnvelope.payload());
-
-        OutboxEvent outboxEvent = OutboxEvent.builder()
-                .eventId(UUID.randomUUID())
-                .correlationId(pending.getCorrelationId())
-                .producerService(PRODUCER_SERVICE)
-                .exchangeName(ExchangeCatalog.ACOLHIMENTO_COMMAND)
-                .routingKey(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1)
-                .aggregateType(AGGREGATE_TYPE)
-                .aggregateId(acolhimento.getId())
-                .eventVersion(EVENT_VERSION)
-                .payload(serialize(deleteV1Envelope, correlationId))
-                .actorId(deleteV1Envelope.actorId())
-                .userAgent(deleteV1Envelope.userAgent())
-                .originIp(deleteV1Envelope.originIp())
-                .status(OutboxStatus.NEW)
-                .attemptCount(0)
-                .maxAttempts(DEFAULT_MAX_ATTEMPTS)
-                .nextRetryAt(LocalDateTime.now())
-                .build();
+                aggregateId,
+                jsonPayloadSerializer.serialize(
+                        deleteV1Envelope,
+                        correlationId,
+                        "Falha ao serializar payload de command delete para programa no outbox"),
+                deleteV1Envelope.actorId(),
+                deleteV1Envelope.userAgent(),
+                deleteV1Envelope.originIp());
         outboxEventPort.save(outboxEvent);
 
         pendingTargetStatusPort
@@ -121,7 +96,7 @@ public class DeleteProgramaUseCase {
                 });
     }
 
-    private InboundEnvelopeDTO<AcolhimentoDeleteDTO> loadAndValidateSourceDeleteEnvelope(
+    private HttpEnvelopeDTO<AcolhimentoDeleteDTO> loadAndValidateSourceDeleteEnvelope(
             UUID sourceEventId,
             String correlationId) {
         OutboxEvent sourceEvent = outboxEventPort.findByEventId(sourceEventId)
@@ -139,7 +114,7 @@ public class DeleteProgramaUseCase {
 
         OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> sourceEnvelope = parseSourceEnvelope(sourceEvent.getPayload(),
                 correlationId);
-        InboundEnvelopeDTO<AcolhimentoDeleteDTO> inboundEnvelope = getInboundEnvelopeDTO(correlationId, sourceEnvelope);
+        HttpEnvelopeDTO<AcolhimentoDeleteDTO> inboundEnvelope = getHttpEnvelopeDTO(correlationId, sourceEnvelope);
 
         try {
             return inboundEnvelopeMapper.validate(inboundEnvelope);
@@ -151,7 +126,7 @@ public class DeleteProgramaUseCase {
         }
     }
 
-    private static InboundEnvelopeDTO<AcolhimentoDeleteDTO> getInboundEnvelopeDTO(String correlationId, OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> sourceEnvelope) {
+    private static HttpEnvelopeDTO<AcolhimentoDeleteDTO> getHttpEnvelopeDTO(String correlationId, OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> sourceEnvelope) {
         AcolhimentoCommandDeletedDTO sourcePayload = sourceEnvelope.payload();
         if (sourcePayload == null || sourcePayload.patientId() == null) {
             throw new AcolhimentoException(
@@ -160,7 +135,7 @@ public class DeleteProgramaUseCase {
                     "Envelope de origem deleted.v2 invalido: payload.patientId ausente");
         }
 
-        return new InboundEnvelopeDTO<>(
+        return new HttpEnvelopeDTO<>(
                 sourceEnvelope.correlationId(),
                 sourceEnvelope.producerService(),
                 sourceEnvelope.occurredAt(),
@@ -179,17 +154,6 @@ public class DeleteProgramaUseCase {
                     ReasonCode.PERSISTENCE_FAILURE,
                     correlationId,
                     "Falha ao desserializar envelope de origem deleted.v2");
-        }
-    }
-
-    private String serialize(Object value, String correlationId) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException ex) {
-            throw new AcolhimentoException(
-                    ReasonCode.PERSISTENCE_FAILURE,
-                    correlationId,
-                    "Falha ao serializar payload de command delete para programa no outbox");
         }
     }
 }

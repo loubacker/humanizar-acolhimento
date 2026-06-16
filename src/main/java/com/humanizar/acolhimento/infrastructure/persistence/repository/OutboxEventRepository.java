@@ -8,7 +8,9 @@ import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
@@ -22,8 +24,10 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEventEntity, 
 
         Optional<OutboxEventEntity> findByEventId(UUID eventId);
 
-        List<OutboxEventEntity> findByStatusInAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
-                        List<OutboxStatus> status, LocalDateTime cutoff);
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+        @Query("SELECT e FROM OutboxEventEntity e WHERE e.eventId = :eventId")
+        Optional<OutboxEventEntity> lockByEventId(@Param("eventId") UUID eventId);
 
         @Lock(LockModeType.PESSIMISTIC_WRITE)
         @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))

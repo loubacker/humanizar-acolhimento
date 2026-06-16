@@ -18,6 +18,8 @@ public interface PendingAcolhimentoPort {
 
     Optional<PendingAcolhimento> findByEventId(UUID eventId);
 
+    PendingAcolhimento getByEventId(UUID eventId);
+
     List<PendingAcolhimento> findByCorrelationId(UUID correlationId);
 
     List<PendingAcolhimento> findByPatientId(UUID patientId);

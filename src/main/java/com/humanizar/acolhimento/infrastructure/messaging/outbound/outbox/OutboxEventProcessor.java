@@ -23,6 +23,7 @@ import com.humanizar.acolhimento.domain.model.peding.PendingTargetStatus;
 import com.humanizar.acolhimento.domain.port.OutboxEventPort;
 import com.humanizar.acolhimento.domain.port.peding.PendingTargetStatusPort;
 import com.humanizar.acolhimento.infrastructure.messaging.outbound.rabbit.RabbitOutboxPublisher;
+import com.humanizar.acolhimento.infrastructure.messaging.outbound.recall.RecallPolicy;
 
 @Component
 public class OutboxEventProcessor {
@@ -36,18 +37,21 @@ public class OutboxEventProcessor {
     private final RabbitOutboxPublisher rabbitOutboxPublisher;
     private final OutboxRetryPolicy retryPolicy;
     private final FindPendingByEventIdUseCase findPendingByEventIdUseCase;
+    private final RecallPolicy recallPolicy;
 
     public OutboxEventProcessor(
             OutboxEventPort outboxEventPort,
             PendingTargetStatusPort pendingTargetStatusPort,
             RabbitOutboxPublisher rabbitOutboxPublisher,
             OutboxRetryPolicy retryPolicy,
-            FindPendingByEventIdUseCase findPendingByEventIdUseCase) {
+            FindPendingByEventIdUseCase findPendingByEventIdUseCase,
+            RecallPolicy recallPolicy) {
         this.outboxEventPort = outboxEventPort;
         this.pendingTargetStatusPort = pendingTargetStatusPort;
         this.rabbitOutboxPublisher = rabbitOutboxPublisher;
         this.retryPolicy = retryPolicy;
         this.findPendingByEventIdUseCase = findPendingByEventIdUseCase;
+        this.recallPolicy = recallPolicy;
         log.info("OutboxEventProcessor iniciado. instanceId={}", instanceId);
     }
 
@@ -128,22 +132,30 @@ public class OutboxEventProcessor {
                 .collect(Collectors.toSet());
 
         if (!existingTargets.contains(TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO)) {
-            pendingTargetStatusPort.save(new PendingTargetStatus(
-                    null,
-                    eventId,
-                    TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO,
-                    Status.PENDING));
+            pendingTargetStatusPort.save(newTarget(
+                    eventId, TargetCatalog.TARGET_NUCLEO_RELACIONAMENTO, Status.PENDING));
         }
 
         if (!existingTargets.contains(TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO)) {
             Status programaStatus = RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2.equals(routingKey)
                     ? Status.ON_HOLD
                     : Status.PENDING;
-            pendingTargetStatusPort.save(new PendingTargetStatus(
-                    null,
-                    eventId,
-                    TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO,
-                    programaStatus));
+            pendingTargetStatusPort.save(newTarget(
+                    eventId, TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO, programaStatus));
         }
+    }
+
+    private PendingTargetStatus newTarget(UUID eventId, String targetService, Status status) {
+        PendingTargetStatus.Builder builder = PendingTargetStatus.builder()
+                .eventId(eventId)
+                .targetService(targetService)
+                .status(status);
+
+        if (status == Status.PENDING) {
+            builder.recallAttempts(0)
+                    .nextRecallAt(recallPolicy.firstRecallAt());
+        }
+
+        return builder.build();
     }
 }

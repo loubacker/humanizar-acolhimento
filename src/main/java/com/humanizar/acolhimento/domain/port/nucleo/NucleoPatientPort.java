@@ -14,6 +14,8 @@ public interface NucleoPatientPort {
 
     Optional<NucleoPatient> findByPatientIdAndNucleoId(UUID patientId, UUID nucleoId);
 
+    boolean existsByPatientId(UUID patientId);
+
     void deleteByPatientId(UUID patientId);
 
     void deleteByIds(List<UUID> ids);

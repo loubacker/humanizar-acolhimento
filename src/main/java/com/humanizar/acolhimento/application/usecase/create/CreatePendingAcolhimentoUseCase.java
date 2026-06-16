@@ -26,15 +26,32 @@ public class CreatePendingAcolhimentoUseCase {
             UUID patientId,
             OperationType operationType,
             String payloadSnapshot) {
+        return execute(correlationId, patientId, operationType, Status.PENDING, payloadSnapshot);
+    }
+
+    @Transactional
+    public PendingAcolhimento execute(
+            UUID correlationId,
+            UUID patientId,
+            OperationType operationType,
+            Status status,
+            String payloadSnapshot) {
         PendingAcolhimento pending = PendingAcolhimento.builder()
                 .eventId(UUID.randomUUID())
                 .correlationId(correlationId)
                 .patientId(patientId)
                 .operationType(operationType)
-                .status(Status.PENDING)
+                .status(status)
                 .payloadSnapshot(payloadSnapshot)
                 .createdAt(LocalDateTime.now())
                 .build();
         return pendingAcolhimentoPort.save(pending);
+    }
+
+    @Transactional
+    public void updateSnapshot(UUID eventId, String payloadSnapshot) {
+        PendingAcolhimento pending = pendingAcolhimentoPort.getByEventId(eventId);
+        pending.setPayloadSnapshot(payloadSnapshot);
+        pendingAcolhimentoPort.save(pending);
     }
 }

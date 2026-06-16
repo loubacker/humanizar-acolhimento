@@ -23,14 +23,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.humanizar.acolhimento.application.catalog.RoutingKeyCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
-import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
-import com.humanizar.acolhimento.application.outbound.dto.AcolhimentoCommandDeletedDTO;
-import com.humanizar.acolhimento.application.outbound.dto.OutboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.outbound.mapper.OutboundDeleteMapper;
-import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveAcolhimentoUseCase;
+import com.humanizar.acolhimento.application.http.mapper.HttpEnvelopeMapper;
+import com.humanizar.acolhimento.application.http.mapper.InboundFieldValidator;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.AcolhimentoCommandDeletedDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.dto.OutboundEnvelopeDTO;
+import com.humanizar.acolhimento.application.messaging.outbound.factory.CommandOutboxEventFactory;
+import com.humanizar.acolhimento.application.messaging.outbound.factory.OutboundEnvelopeFactory;
+import com.humanizar.acolhimento.application.messaging.outbound.mapper.OutboundDeleteMapper;
+import com.humanizar.acolhimento.application.serializer.JsonPayloadSerializer;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.OutboxEvent;
-import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.enums.OutboxStatus;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -51,8 +53,6 @@ class DeleteProgramaUseCaseTest {
     private OutboxEventPort outboxEventPort;
     @Mock
     private PendingTargetStatusPort pendingTargetStatusPort;
-    @Mock
-    private RetrieveAcolhimentoUseCase retrieveAcolhimentoUseCase;
 
     @Captor
     private ArgumentCaptor<OutboxEvent> outboxEventCaptor;
@@ -66,10 +66,11 @@ class DeleteProgramaUseCaseTest {
         useCase = new DeleteProgramaUseCase(
                 outboxEventPort,
                 pendingTargetStatusPort,
-                retrieveAcolhimentoUseCase,
-                new InboundEnvelopeMapper(),
-                new OutboundDeleteMapper(),
-                objectMapper);
+                new HttpEnvelopeMapper(new InboundFieldValidator()),
+                new OutboundDeleteMapper(new OutboundEnvelopeFactory()),
+                objectMapper,
+                new JsonPayloadSerializer(objectMapper),
+                new CommandOutboxEventFactory());
     }
 
     @Test
@@ -77,7 +78,6 @@ class DeleteProgramaUseCaseTest {
         UUID eventId = UUID.randomUUID();
         UUID correlationId = UUID.randomUUID();
         UUID patientId = UUID.randomUUID();
-        UUID aggregateId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
 
         PendingAcolhimento pending = PendingAcolhimento.builder()
@@ -90,19 +90,12 @@ class DeleteProgramaUseCaseTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        Acolhimento acolhimento = Acolhimento.builder()
-                .id(aggregateId)
-                .patientId(patientId)
-                .build();
-
         PendingTargetStatus programaOnHold = new PendingTargetStatus(
                 UUID.randomUUID(),
                 eventId,
                 TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO,
                 Status.ON_HOLD);
 
-        when(retrieveAcolhimentoUseCase.execute(patientId, correlationId.toString()))
-                .thenReturn(acolhimento);
         when(outboxEventPort.findByEventId(eventId))
                 .thenReturn(Optional.of(sourceDeletedV2Event(eventId, correlationId, patientId, actorId)));
         when(pendingTargetStatusPort.findByEventIdAndTargetService(eventId, TargetCatalog.TARGET_PROGRAMA_ATENDIMENTO))
@@ -115,7 +108,7 @@ class DeleteProgramaUseCaseTest {
         verify(outboxEventPort).save(outboxEventCaptor.capture());
         OutboxEvent saved = outboxEventCaptor.getValue();
         assertEquals(correlationId, saved.getCorrelationId());
-        assertEquals(aggregateId, saved.getAggregateId());
+        assertEquals(patientId, saved.getAggregateId());
         assertEquals(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1, saved.getRoutingKey());
         assertEquals(OutboxStatus.NEW, saved.getStatus());
         assertNotNull(saved.getPayload());
@@ -129,6 +122,7 @@ class DeleteProgramaUseCaseTest {
 
         OutboundEnvelopeDTO<AcolhimentoCommandDeletedDTO> savedEnvelope = readEnvelope(saved.getPayload());
         assertEquals(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V1, savedEnvelope.routingKey());
+        assertEquals(patientId, savedEnvelope.aggregateId());
         assertEquals(actorId, savedEnvelope.actorId());
         assertEquals(USER_AGENT, savedEnvelope.userAgent());
         assertEquals(ORIGIN_IP, savedEnvelope.originIp());
@@ -154,7 +148,6 @@ class DeleteProgramaUseCaseTest {
 
         AcolhimentoException ex = assertThrows(AcolhimentoException.class, () -> useCase.execute(pending));
         assertEquals(ReasonCode.PERSISTENCE_FAILURE, ex.getReasonCode());
-        verify(retrieveAcolhimentoUseCase, never()).execute(any(UUID.class), any(String.class));
         verify(outboxEventPort, never()).save(any(OutboxEvent.class));
         verify(pendingTargetStatusPort, never()).save(any(PendingTargetStatus.class));
     }
@@ -195,7 +188,7 @@ class DeleteProgramaUseCaseTest {
                 "humanizar.acolhimento.command",
                 RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2,
                 "acolhimento",
-                UUID.randomUUID(),
+                patientId,
                 1,
                 LocalDateTime.now(),
                 actorId,
@@ -210,7 +203,7 @@ class DeleteProgramaUseCaseTest {
                 .exchangeName("humanizar.acolhimento.command")
                 .routingKey(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_DELETED_V2)
                 .aggregateType("acolhimento")
-                .aggregateId(UUID.randomUUID())
+                .aggregateId(patientId)
                 .eventVersion((short) 1)
                 .payload(writeEnvelope(sourceEnvelope))
                 .status(OutboxStatus.PUBLISHED)

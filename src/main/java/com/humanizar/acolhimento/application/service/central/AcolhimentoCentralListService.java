@@ -10,9 +10,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralListDTO;
-import com.humanizar.acolhimento.application.outbound.dto.central.PendingCentralPageDTO;
-import com.humanizar.acolhimento.application.outbound.dto.central.PendingTargetStatusDTO;
+import com.humanizar.acolhimento.application.http.dto.central.PendingCentralListDTO;
+import com.humanizar.acolhimento.application.http.dto.central.PendingTargetStatusDTO;
+import com.humanizar.acolhimento.application.http.dto.shared.PaginatedDTO;
+import com.humanizar.acolhimento.application.http.mapper.central.PendingTargetStatusDtoMapper;
 import com.humanizar.acolhimento.application.usecase.central.FindPendingByPatientUseCase;
 import com.humanizar.acolhimento.application.usecase.central.FindTargetsByEventIdUseCase;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
@@ -24,15 +25,18 @@ public class AcolhimentoCentralListService {
 
     private final FindPendingByPatientUseCase findPendingByPatientUseCase;
     private final FindTargetsByEventIdUseCase findTargetsByEventIdUseCase;
+    private final PendingTargetStatusDtoMapper pendingTargetStatusDtoMapper;
 
     public AcolhimentoCentralListService(
             FindPendingByPatientUseCase findPendingByPatientUseCase,
-            FindTargetsByEventIdUseCase findTargetsByEventIdUseCase) {
+            FindTargetsByEventIdUseCase findTargetsByEventIdUseCase,
+            PendingTargetStatusDtoMapper pendingTargetStatusDtoMapper) {
         this.findPendingByPatientUseCase = findPendingByPatientUseCase;
         this.findTargetsByEventIdUseCase = findTargetsByEventIdUseCase;
+        this.pendingTargetStatusDtoMapper = pendingTargetStatusDtoMapper;
     }
 
-    public PendingCentralPageDTO execute(UUID patientId, int page, int size) {
+    public PaginatedDTO<PendingCentralListDTO> execute(UUID patientId, int page, int size) {
         log.info("Listando execucoes da central para patientId={}, page={}, size={}", patientId, page, size);
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
@@ -45,22 +49,17 @@ public class AcolhimentoCentralListService {
         log.info("Retornando {} execucoes (pagina {} de {}) para patientId={}",
                 data.size(), page, pendingPage.getTotalPages(), patientId);
 
-        return new PendingCentralPageDTO(
-                data,
+        return new PaginatedDTO<>(
+                pendingPage.getTotalElements(),
                 pendingPage.getNumber(),
                 pendingPage.getSize(),
                 pendingPage.getTotalPages(),
-                pendingPage.getTotalElements());
+                data);
     }
 
     private PendingCentralListDTO toListDTO(PendingAcolhimento pending) {
-        List<PendingTargetStatusDTO> targets = findTargetsByEventIdUseCase
-                .execute(pending.getEventId())
-                .stream()
-                .map(t -> new PendingTargetStatusDTO(
-                        t.getTargetService(),
-                        t.getStatus().name()))
-                .toList();
+        List<PendingTargetStatusDTO> targets = pendingTargetStatusDtoMapper.toDTOList(
+                findTargetsByEventIdUseCase.execute(pending.getEventId()));
 
         return new PendingCentralListDTO(
                 pending.getEventId(),

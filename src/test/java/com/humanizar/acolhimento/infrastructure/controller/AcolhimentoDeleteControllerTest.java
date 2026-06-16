@@ -10,17 +10,21 @@ import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.humanizar.acolhimento.application.inbound.mapper.InboundEnvelopeMapper;
+import com.humanizar.acolhimento.application.http.mapper.HttpEnvelopeMapper;
+import com.humanizar.acolhimento.application.http.mapper.InboundFieldValidator;
 import com.humanizar.acolhimento.application.service.AcolhimentoDeleteService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
+import com.humanizar.acolhimento.infrastructure.controller.dto.SuccessResponseDTO;
 import com.humanizar.acolhimento.infrastructure.controller.handler.AcolhimentoExceptionHandler;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,7 +38,7 @@ class AcolhimentoDeleteControllerTest {
     @BeforeEach
     void setUp() {
         AcolhimentoDeleteController controller = new AcolhimentoDeleteController(
-                acolhimentoDeleteService, new InboundEnvelopeMapper());
+                acolhimentoDeleteService, new HttpEnvelopeMapper(new InboundFieldValidator()));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new AcolhimentoExceptionHandler())
                 .build();
@@ -43,14 +47,26 @@ class AcolhimentoDeleteControllerTest {
     @Test
     void shouldReturn200WithSuccessBody() throws Exception {
         UUID patientId = UUID.fromString("544f31af-0a2e-4a6f-bfff-6c163f23d71a");
+        String correlationId = "f5e56969-d6c4-4b89-8ca8-403b6d3a0a20";
+
+        when(acolhimentoDeleteService.deleteByPatientId(eq(patientId), any()))
+                .thenReturn(new SuccessResponseDTO(
+                        "ACOLHIMENTO_DELETED",
+                        correlationId,
+                        "Acolhimento removido com sucesso",
+                        patientId));
 
         mockMvc.perform(delete("/api/v1/acolhimento/delete/{patientId}", patientId)
                 .contentType("application/json")
                 .content(validDeleteEnvelope(patientId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("SUCCESS"))
-                .andExpect(jsonPath("$.operation").value("DELETE"))
-                .andExpect(jsonPath("$.patientId").value(patientId.toString()));
+                .andExpect(header().string("X-Correlation-ID", correlationId))
+                .andExpect(jsonPath("$.code").value("ACOLHIMENTO_DELETED"))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.correlationId").value(correlationId))
+                .andExpect(jsonPath("$.message").value("Acolhimento removido com sucesso"))
+                .andExpect(jsonPath("$.data").value(patientId.toString()))
+                .andExpect(jsonPath("$.timestamp").exists());
 
         verify(acolhimentoDeleteService).deleteByPatientId(eq(patientId), any());
     }
@@ -71,9 +87,11 @@ class AcolhimentoDeleteControllerTest {
                 .contentType("application/json")
                 .content(validDeleteEnvelope(patientId)))
                 .andExpect(status().isNotFound())
+                .andExpect(header().string("X-Correlation-ID", correlationId))
                 .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
                 .andExpect(jsonPath("$.reasonCode").value("PATIENT_NOT_FOUND"))
-                .andExpect(jsonPath("$.correlationId").value(correlationId))
+                .andExpect(jsonPath("$.message").value("Paciente nao encontrado"))
                 .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/delete/" + patientId));
 
         verify(acolhimentoDeleteService).deleteByPatientId(eq(patientId), any());
@@ -95,9 +113,11 @@ class AcolhimentoDeleteControllerTest {
                 .contentType("application/json")
                 .content(validDeleteEnvelope(patientId)))
                 .andExpect(status().isConflict())
+                .andExpect(header().string("X-Correlation-ID", correlationId))
                 .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
                 .andExpect(jsonPath("$.reasonCode").value("DELETE_IN_PROGRESS"))
-                .andExpect(jsonPath("$.correlationId").value(correlationId))
+                .andExpect(jsonPath("$.message").value("Ja existe operacao DELETE pendente para patientId=" + patientId))
                 .andExpect(jsonPath("$.path").value("/api/v1/acolhimento/delete/" + patientId));
 
         verify(acolhimentoDeleteService).deleteByPatientId(eq(patientId), any());

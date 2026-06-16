@@ -1,9 +1,11 @@
 package com.humanizar.acolhimento.infrastructure.adapter.peding;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +66,17 @@ public class PendingTargetStatusAdapter implements PendingTargetStatusPort {
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED)
+    public List<PendingTargetStatus> findStaleTargets(Status status, LocalDateTime now, int limit) {
+        return repository
+                .findByStatusAndNextRecallAtLessThanEqualOrderByNextRecallAtAsc(
+                        status, now, PageRequest.of(0, limit))
+                .stream()
+                .map(this::toDomain)
+                .toList();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED)
     public void deleteByEventId(UUID eventId) {
         repository.deleteByEventId(eventId);
     }
@@ -73,7 +86,10 @@ public class PendingTargetStatusAdapter implements PendingTargetStatusPort {
                 entity.getId(),
                 entity.getEventId(),
                 entity.getTargetService(),
-                entity.getStatus());
+                entity.getStatus(),
+                entity.getRecallAttempts(),
+                entity.getLastRecallAt(),
+                entity.getNextRecallAt());
     }
 
     private PendingTargetStatusEntity toEntity(PendingTargetStatus domain) {
@@ -82,6 +98,9 @@ public class PendingTargetStatusAdapter implements PendingTargetStatusPort {
         entity.setEventId(domain.getEventId());
         entity.setTargetService(domain.getTargetService());
         entity.setStatus(domain.getStatus());
+        entity.setRecallAttempts(domain.getRecallAttempts());
+        entity.setLastRecallAt(domain.getLastRecallAt());
+        entity.setNextRecallAt(domain.getNextRecallAt());
         return entity;
     }
 }

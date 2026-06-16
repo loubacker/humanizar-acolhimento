@@ -29,13 +29,23 @@ public class AcolhimentoAdapter implements AcolhimentoPort {
     }
 
     @Override
-    public Optional<Acolhimento> findByPatientId(UUID patientId) {
-        return acolhimentoRepository.findByPatientId(patientId).map(this::toDomain);
+    public Optional<Acolhimento> findByNucleoPatientId(UUID nucleoPatientId) {
+        return acolhimentoRepository.findByNucleoPatientId(nucleoPatientId).map(this::toDomain);
     }
 
     @Override
-    public boolean existsByPatientId(UUID patientId) {
-        return acolhimentoRepository.existsByPatientId(patientId);
+    public boolean existsByNucleoPatientId(UUID nucleoPatientId) {
+        return acolhimentoRepository.existsByNucleoPatientId(nucleoPatientId);
+    }
+
+    @Override
+    public List<Acolhimento> findByNucleoPatientIdIn(List<UUID> nucleoPatientIds) {
+        if (nucleoPatientIds == null || nucleoPatientIds.isEmpty()) {
+            return List.of();
+        }
+        return acolhimentoRepository.findByNucleoPatientIdIn(nucleoPatientIds).stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     @Override
@@ -49,6 +59,12 @@ public class AcolhimentoAdapter implements AcolhimentoPort {
 
     @Override
     @Transactional
+    public void deleteByNucleoPatientId(UUID nucleoPatientId) {
+        acolhimentoRepository.deleteByNucleoPatientId(nucleoPatientId);
+    }
+
+    @Override
+    @Transactional
     public void deleteByPatientId(UUID patientId) {
         acolhimentoRepository.deleteByPatientId(patientId);
     }
@@ -56,11 +72,10 @@ public class AcolhimentoAdapter implements AcolhimentoPort {
     private Acolhimento toDomain(AcolhimentoEntity entity) {
         return new Acolhimento(
                 entity.getId(),
-                entity.getPatientId(),
+                entity.getNucleoPatientId(),
                 entity.getDataAnamnese(),
                 entity.getHoraAnamnese(),
                 entity.getObservacoes(),
-                List.of(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt());
     }
@@ -68,7 +83,7 @@ public class AcolhimentoAdapter implements AcolhimentoPort {
     private AcolhimentoEntity toEntity(Acolhimento domain) {
         AcolhimentoEntity entity = new AcolhimentoEntity();
         entity.setId(domain.getId() != null ? domain.getId() : UUID.randomUUID());
-        entity.setPatientId(domain.getPatientId());
+        entity.setNucleoPatientId(domain.getNucleoPatientId());
         entity.setDataAnamnese(domain.getDataAnamnese());
         entity.setHoraAnamnese(domain.getHoraAnamnese());
         entity.setObservacoes(domain.getObservacoes());

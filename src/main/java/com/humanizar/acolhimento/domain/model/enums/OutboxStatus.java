@@ -5,5 +5,6 @@ public enum OutboxStatus {
     LOCKED,
     PUBLISHED,
     FAILED,
-    DEAD
+    DEAD,
+    AUDIT
 }

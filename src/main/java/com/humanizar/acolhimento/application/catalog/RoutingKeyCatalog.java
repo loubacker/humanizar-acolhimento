@@ -8,6 +8,11 @@ public final class RoutingKeyCatalog {
     public static final String COMMAND_ACOLHIMENTO_DELETED_V1 = "cmd.acolhimento.deleted.v1";
     public static final String COMMAND_ACOLHIMENTO_DELETED_V2 = "cmd.acolhimento.deleted.v2";
 
+    // Routing keys de auditoria de anamnese (metadado do outbox AUDIT, nunca entregue).
+    public static final String AUDIT_ACOLHIMENTO_ANAMNESE_CREATED_V1 = "audit.acolhimento.anamnese.created.v1";
+    public static final String AUDIT_ACOLHIMENTO_ANAMNESE_UPDATED_V1 = "audit.acolhimento.anamnese.updated.v1";
+    public static final String AUDIT_ACOLHIMENTO_ANAMNESE_DELETED_V1 = "audit.acolhimento.anamnese.deleted.v1";
+
     // Routing keys de callback inbound consumidos do nucleo-relacionamento.
     public static final String ACOLHIMENTO_NUCLEO_RELACIONAMENTO_PROCESSED_V1 = "ev.acolhimento.nucleo-relacionamento.processed.v1";
     public static final String ACOLHIMENTO_NUCLEO_RELACIONAMENTO_REJECTED_V1 = "ev.acolhimento.nucleo-relacionamento.rejected.v1";

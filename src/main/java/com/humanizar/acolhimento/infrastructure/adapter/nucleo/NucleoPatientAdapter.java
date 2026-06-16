@@ -48,6 +48,11 @@ public class NucleoPatientAdapter implements NucleoPatientPort {
     }
 
     @Override
+    public boolean existsByPatientId(UUID patientId) {
+        return nucleoPatientRepository.existsByPatientId(patientId);
+    }
+
+    @Override
     @Transactional
     public void deleteByPatientId(UUID patientId) {
         nucleoPatientRepository.deleteByPatientId(patientId);

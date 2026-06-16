@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
+import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
 import com.humanizar.acolhimento.domain.port.peding.PendingAcolhimentoPort;
@@ -38,6 +40,16 @@ public class PendingAcolhimentoAdapter implements PendingAcolhimentoPort {
     @Override
     public Optional<PendingAcolhimento> findByEventId(UUID eventId) {
         return repository.findByEventId(eventId).map(this::toDomain);
+    }
+
+    @Override
+    public PendingAcolhimento getByEventId(UUID eventId) {
+        return repository.findByEventId(eventId)
+                .map(this::toDomain)
+                .orElseThrow(() -> new AcolhimentoException(
+                        ReasonCode.PERSISTENCE_FAILURE,
+                        null,
+                        "pending_acolhimento nao encontrado para eventId=" + eventId));
     }
 
     @Override
@@ -71,7 +83,7 @@ public class PendingAcolhimentoAdapter implements PendingAcolhimentoPort {
             UUID patientId,
             OperationType operationType,
             Status status) {
-        return repository.checkDeleteStatusByPatientId(patientId, operationType, status);
+        return repository.existsByPatientIdAndOperationTypeAndStatus(patientId, operationType, status);
     }
 
     @Override

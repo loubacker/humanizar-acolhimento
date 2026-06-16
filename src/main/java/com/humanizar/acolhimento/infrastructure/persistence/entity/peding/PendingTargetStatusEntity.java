@@ -1,5 +1,6 @@
 package com.humanizar.acolhimento.infrastructure.persistence.entity.peding;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,7 +20,8 @@ import jakarta.persistence.UniqueConstraint;
         @UniqueConstraint(name = "uk_event_target", columnNames = { "event_id", "target_service" })
 }, indexes = {
         @Index(name = "idx_target_status", columnList = "target_service,status"),
-        @Index(name = "idx_event_status", columnList = "event_id,status")
+        @Index(name = "idx_event_status", columnList = "event_id,status"),
+        @Index(name = "idx_target_status_recall", columnList = "status,next_recall_at")
 })
 public class PendingTargetStatusEntity {
 
@@ -36,6 +38,15 @@ public class PendingTargetStatusEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private Status status;
+
+    @Column(name = "recall_attempts")
+    private Integer recallAttempts;
+
+    @Column(name = "last_recall_at")
+    private LocalDateTime lastRecallAt;
+
+    @Column(name = "next_recall_at")
+    private LocalDateTime nextRecallAt;
 
     public PendingTargetStatusEntity() {
     }
@@ -77,6 +88,30 @@ public class PendingTargetStatusEntity {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public Integer getRecallAttempts() {
+        return recallAttempts;
+    }
+
+    public void setRecallAttempts(Integer recallAttempts) {
+        this.recallAttempts = recallAttempts;
+    }
+
+    public LocalDateTime getLastRecallAt() {
+        return lastRecallAt;
+    }
+
+    public void setLastRecallAt(LocalDateTime lastRecallAt) {
+        this.lastRecallAt = lastRecallAt;
+    }
+
+    public LocalDateTime getNextRecallAt() {
+        return nextRecallAt;
+    }
+
+    public void setNextRecallAt(LocalDateTime nextRecallAt) {
+        this.nextRecallAt = nextRecallAt;
     }
 
     @Override

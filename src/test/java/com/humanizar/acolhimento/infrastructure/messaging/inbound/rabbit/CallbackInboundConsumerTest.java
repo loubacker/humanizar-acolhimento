@@ -18,10 +18,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.humanizar.acolhimento.application.catalog.ConsumerCatalog;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
-import com.humanizar.acolhimento.application.outbound.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.mapper.CallbackInboundMapper;
 import com.humanizar.acolhimento.application.service.AcolhimentoCallbackService;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -32,7 +32,7 @@ import com.rabbitmq.client.Channel;
 class CallbackInboundConsumerTest {
 
     @Mock
-    private ObjectMapper objectMapper;
+    private CallbackInboundMapper callbackInboundMapper;
 
     @Mock
     private AcolhimentoCallbackService acolhimentoCallbackService;
@@ -44,11 +44,11 @@ class CallbackInboundConsumerTest {
     void shouldAckOnSuccess() throws IOException {
         long deliveryTag = 11L;
         CallbackDTO callback = callback("PROCESSED");
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+        when(callbackInboundMapper.parse(any(byte[].class)))
                 .thenReturn(callback);
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 
@@ -63,7 +63,7 @@ class CallbackInboundConsumerTest {
     void shouldAckOnDuplicateEvent() throws IOException {
         long deliveryTag = 12L;
         CallbackDTO callback = callback("PROCESSED");
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+        when(callbackInboundMapper.parse(any(byte[].class)))
                 .thenReturn(callback);
         doThrow(new AcolhimentoException(
                         ReasonCode.DUPLICATE_EVENT,
@@ -73,7 +73,7 @@ class CallbackInboundConsumerTest {
                 .processCallback(any(), any(), any());
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 
@@ -88,7 +88,7 @@ class CallbackInboundConsumerTest {
     void shouldNackRetryOnRetryableException() throws IOException {
         long deliveryTag = 13L;
         CallbackDTO callback = callback("PROCESSED");
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+        when(callbackInboundMapper.parse(any(byte[].class)))
                 .thenReturn(callback);
         doThrow(new AcolhimentoException(
                         ReasonCode.PERSISTENCE_FAILURE,
@@ -98,7 +98,7 @@ class CallbackInboundConsumerTest {
                 .processCallback(any(), any(), any());
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 
@@ -113,7 +113,7 @@ class CallbackInboundConsumerTest {
     void shouldNackDeadLetterOnNonRetryableException() throws IOException {
         long deliveryTag = 14L;
         CallbackDTO callback = callback("REJECTED");
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+        when(callbackInboundMapper.parse(any(byte[].class)))
                 .thenReturn(callback);
         doThrow(new AcolhimentoException(
                         ReasonCode.VALIDATION_ERROR,
@@ -123,7 +123,7 @@ class CallbackInboundConsumerTest {
                 .processCallback(any(), any(), any());
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 
@@ -137,11 +137,33 @@ class CallbackInboundConsumerTest {
     @Test
     void shouldNackDeadLetterOnParseError() throws IOException {
         long deliveryTag = 15L;
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
-                .thenThrow(new IOException("invalid json"));
+        when(callbackInboundMapper.parse(any(byte[].class)))
+                .thenThrow(new AcolhimentoException(ReasonCode.INBOUND_PARSE_ERROR, null, "parse falhou"));
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
+                acolhimentoCallbackService,
+                new RabbitAcknowledgementConfig());
+
+        consumer.onNucleoRelacionamentoCallback(message(deliveryTag), channel);
+
+        verify(channel).basicNack(deliveryTag, false, false);
+        verify(acolhimentoCallbackService, never()).processCallback(any(), any(), any());
+        verify(channel, never()).basicAck(deliveryTag, false);
+    }
+
+    @Test
+    void shouldNackDeadLetterOnValidationError() throws IOException {
+        long deliveryTag = 17L;
+        CallbackDTO callback = callback("PROCESSED");
+        when(callbackInboundMapper.parse(any(byte[].class)))
+                .thenReturn(callback);
+        doThrow(new AcolhimentoException(ReasonCode.INBOUND_REQUIRED_FIELD, null, "Campo obrigatorio ausente: status"))
+                .when(callbackInboundMapper)
+                .validate(callback);
+
+        CallbackInboundConsumer consumer = new CallbackInboundConsumer(
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 
@@ -156,11 +178,11 @@ class CallbackInboundConsumerTest {
     void shouldRouteProgramaCallbackToProgramaTarget() throws IOException {
         long deliveryTag = 16L;
         CallbackDTO callback = callback("PROCESSED");
-        when(objectMapper.readValue(any(byte[].class), org.mockito.ArgumentMatchers.eq(CallbackDTO.class)))
+        when(callbackInboundMapper.parse(any(byte[].class)))
                 .thenReturn(callback);
 
         CallbackInboundConsumer consumer = new CallbackInboundConsumer(
-                objectMapper,
+                callbackInboundMapper,
                 acolhimentoCallbackService,
                 new RabbitAcknowledgementConfig());
 

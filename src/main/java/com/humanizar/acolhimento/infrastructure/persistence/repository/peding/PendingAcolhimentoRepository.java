@@ -29,9 +29,5 @@ public interface PendingAcolhimentoRepository extends JpaRepository<PendingAcolh
 
     boolean existsByPatientIdAndOperationTypeAndStatus(UUID patientId, OperationType operationType, Status status);
 
-    default boolean checkDeleteStatusByPatientId(UUID patientId, OperationType operationType, Status status) {
-        return existsByPatientIdAndOperationTypeAndStatus(patientId, operationType, status);
-    }
-
     void deleteByCreatedAtBefore(LocalDateTime cutoff);
 }

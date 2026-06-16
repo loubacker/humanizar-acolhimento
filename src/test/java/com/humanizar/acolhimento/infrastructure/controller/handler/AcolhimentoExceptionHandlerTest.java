@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -28,10 +29,11 @@ class AcolhimentoExceptionHandlerTest {
     void shouldMapAcolhimentoExceptionToStandardJson() throws Exception {
         mockMvc.perform(get("/test/advice"))
                 .andExpect(status().isConflict())
+                .andExpect(header().string("X-Correlation-ID", "corr-123"))
                 .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
                 .andExpect(jsonPath("$.reasonCode").value("DUPLICATE_PATIENT"))
                 .andExpect(jsonPath("$.message").value("Acolhimento duplicado"))
-                .andExpect(jsonPath("$.correlationId").value("corr-123"))
                 .andExpect(jsonPath("$.path").value("/test/advice"))
                 .andExpect(jsonPath("$.timestamp").exists());
     }

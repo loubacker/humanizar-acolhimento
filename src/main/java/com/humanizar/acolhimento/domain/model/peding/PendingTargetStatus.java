@@ -1,5 +1,6 @@
 package com.humanizar.acolhimento.domain.model.peding;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -11,23 +12,32 @@ public class PendingTargetStatus {
     private UUID eventId;
     private String targetService;
     private Status status;
+    private Integer recallAttempts;
+    private LocalDateTime lastRecallAt;
+    private LocalDateTime nextRecallAt;
 
-    // Construtores
     public PendingTargetStatus() {
     }
 
     public PendingTargetStatus(UUID id, UUID eventId, String targetService, Status status) {
+        this(id, eventId, targetService, status, null, null, null);
+    }
+
+    public PendingTargetStatus(UUID eventId, String targetService, Status status) {
+        this(null, eventId, targetService, status, null, null, null);
+    }
+
+    public PendingTargetStatus(UUID id, UUID eventId, String targetService, Status status,
+            Integer recallAttempts, LocalDateTime lastRecallAt, LocalDateTime nextRecallAt) {
         this.id = id;
         this.eventId = eventId;
         this.targetService = targetService;
         this.status = status;
+        this.recallAttempts = recallAttempts;
+        this.lastRecallAt = lastRecallAt;
+        this.nextRecallAt = nextRecallAt;
     }
 
-    public PendingTargetStatus(UUID eventId, String targetService, Status status) {
-        this(null, eventId, targetService, status);
-    }
-
-    // Getters e Setters
     public UUID getId() {
         return id;
     }
@@ -60,7 +70,30 @@ public class PendingTargetStatus {
         this.status = status;
     }
 
-    // Builder Estático
+    public Integer getRecallAttempts() {
+        return recallAttempts;
+    }
+
+    public void setRecallAttempts(Integer recallAttempts) {
+        this.recallAttempts = recallAttempts;
+    }
+
+    public LocalDateTime getLastRecallAt() {
+        return lastRecallAt;
+    }
+
+    public void setLastRecallAt(LocalDateTime lastRecallAt) {
+        this.lastRecallAt = lastRecallAt;
+    }
+
+    public LocalDateTime getNextRecallAt() {
+        return nextRecallAt;
+    }
+
+    public void setNextRecallAt(LocalDateTime nextRecallAt) {
+        this.nextRecallAt = nextRecallAt;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -70,6 +103,9 @@ public class PendingTargetStatus {
         private UUID eventId;
         private String targetService;
         private Status status;
+        private Integer recallAttempts;
+        private LocalDateTime lastRecallAt;
+        private LocalDateTime nextRecallAt;
 
         public Builder id(UUID id) {
             this.id = id;
@@ -91,12 +127,27 @@ public class PendingTargetStatus {
             return this;
         }
 
+        public Builder recallAttempts(Integer recallAttempts) {
+            this.recallAttempts = recallAttempts;
+            return this;
+        }
+
+        public Builder lastRecallAt(LocalDateTime lastRecallAt) {
+            this.lastRecallAt = lastRecallAt;
+            return this;
+        }
+
+        public Builder nextRecallAt(LocalDateTime nextRecallAt) {
+            this.nextRecallAt = nextRecallAt;
+            return this;
+        }
+
         public PendingTargetStatus build() {
-            return new PendingTargetStatus(id, eventId, targetService, status);
+            return new PendingTargetStatus(id, eventId, targetService, status,
+                    recallAttempts, lastRecallAt, nextRecallAt);
         }
     }
 
-    // equals, hashCode, toString
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -124,6 +175,9 @@ public class PendingTargetStatus {
                 ", eventId=" + eventId +
                 ", targetService='" + targetService + '\'' +
                 ", status=" + status +
+                ", recallAttempts=" + recallAttempts +
+                ", lastRecallAt=" + lastRecallAt +
+                ", nextRecallAt=" + nextRecallAt +
                 '}';
     }
 }

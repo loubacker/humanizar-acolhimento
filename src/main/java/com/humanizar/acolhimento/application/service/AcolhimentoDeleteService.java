@@ -2,126 +2,116 @@ package com.humanizar.acolhimento.application.service;
 
 import java.util.UUID;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
-import com.humanizar.acolhimento.application.inbound.dto.InboundDeleteContextDTO;
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.AcolhimentoDeleteDTO;
-import com.humanizar.acolhimento.application.inbound.dto.acolhimento.InboundAcolhimentoDTO;
-import com.humanizar.acolhimento.application.inbound.dto.envelop.InboundEnvelopeDTO;
-import com.humanizar.acolhimento.application.inbound.mapper.InboundDeleteContextMapper;
-import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoPatientDTO;
-import com.humanizar.acolhimento.application.inbound.dto.nucleo.NucleoResponsavelDTO;
+import com.humanizar.acolhimento.application.http.dto.InboundContextDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.CallbackStatusInterpreter;
+import com.humanizar.acolhimento.application.http.dto.acolhimento.AcolhimentoDeleteDTO;
+import com.humanizar.acolhimento.application.http.dto.envelop.HttpEnvelopeDTO;
+import com.humanizar.acolhimento.application.http.mapper.InboundDeleteContextMapper;
 import com.humanizar.acolhimento.application.usecase.central.FindPendingByEventIdUseCase;
 import com.humanizar.acolhimento.application.usecase.central.FindTargetsByEventIdUseCase;
 import com.humanizar.acolhimento.application.usecase.create.CreatePendingAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.create.MarkPendingCreateUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteOutboxCommandUseCase;
-import com.humanizar.acolhimento.application.usecase.delete.DeleteAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteNucleoPatientUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteNucleoPatientResponsavelUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.DeleteProgramaUseCase;
 import com.humanizar.acolhimento.application.usecase.delete.ValidateDeleteProgressUseCase;
-import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveAcolhimentoUseCase;
-import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientResponsavelUseCase;
-import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientUseCase;
-import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
-import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
+import com.humanizar.acolhimento.application.usecase.exception.PipelineExceptionUseCase;
+import com.humanizar.acolhimento.application.usecase.snapshot.BuildPatientSnapshotUseCase;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
-import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.domain.model.enums.Status;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
+import com.humanizar.acolhimento.domain.port.acolhimento.AcolhimentoPort;
+import com.humanizar.acolhimento.infrastructure.controller.dto.SuccessResponseDTO;
 
 @Service
 public class AcolhimentoDeleteService {
 
-    private static final Logger log = LoggerFactory.getLogger(AcolhimentoDeleteService.class);
-
-    private final RetrieveAcolhimentoUseCase findAcolhimentoByPatientIdRetrieveUseCase;
-    private final RetrieveNucleoPatientUseCase findNucleoPatientByPatientIdRetrieveUseCase;
-    private final RetrieveNucleoPatientResponsavelUseCase findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase;
     private final InboundDeleteContextMapper inboundDeleteContextMapper;
     private final CreatePendingAcolhimentoUseCase createPendingAcolhimentoUseCase;
     private final DeleteNucleoPatientResponsavelUseCase deleteNucleoPatientResponsavelUseCase;
     private final DeleteNucleoPatientUseCase deleteNucleoPatientUseCase;
-    private final DeleteAcolhimentoUseCase deleteAcolhimentoUseCase;
+    private final AcolhimentoPort acolhimentoPort;
     private final DeleteOutboxCommandUseCase deleteOutboxCommandUseCase;
     private final DeleteProgramaUseCase deleteProgramaUseCase;
     private final ValidateDeleteProgressUseCase validateDeleteProgressUseCase;
     private final MarkPendingCreateUseCase markPendingCreateUseCase;
     private final FindPendingByEventIdUseCase findPendingByEventIdUseCase;
     private final FindTargetsByEventIdUseCase findTargetsByEventIdUseCase;
-    private final ObjectMapper objectMapper;
+    private final BuildPatientSnapshotUseCase buildPatientSnapshotUseCase;
+    private final PipelineExceptionUseCase pipelineExceptionUseCase;
+    private final CallbackStatusInterpreter callbackStatusInterpreter;
 
     public AcolhimentoDeleteService(
-            RetrieveAcolhimentoUseCase findAcolhimentoByPatientIdRetrieveUseCase,
-            RetrieveNucleoPatientUseCase findNucleoPatientByPatientIdRetrieveUseCase,
-            RetrieveNucleoPatientResponsavelUseCase findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase,
             InboundDeleteContextMapper inboundDeleteContextMapper,
             CreatePendingAcolhimentoUseCase createPendingAcolhimentoUseCase,
             DeleteNucleoPatientResponsavelUseCase deleteNucleoPatientResponsavelUseCase,
             DeleteNucleoPatientUseCase deleteNucleoPatientUseCase,
-            DeleteAcolhimentoUseCase deleteAcolhimentoUseCase,
+            AcolhimentoPort acolhimentoPort,
             DeleteOutboxCommandUseCase deleteOutboxCommandUseCase,
             DeleteProgramaUseCase deleteProgramaUseCase,
             ValidateDeleteProgressUseCase validateDeleteProgressUseCase,
             MarkPendingCreateUseCase markPendingCreateUseCase,
             FindPendingByEventIdUseCase findPendingByEventIdUseCase,
             FindTargetsByEventIdUseCase findTargetsByEventIdUseCase,
-            ObjectMapper objectMapper) {
-        this.findAcolhimentoByPatientIdRetrieveUseCase = findAcolhimentoByPatientIdRetrieveUseCase;
-        this.findNucleoPatientByPatientIdRetrieveUseCase = findNucleoPatientByPatientIdRetrieveUseCase;
-        this.findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase = findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase;
+            BuildPatientSnapshotUseCase buildPatientSnapshotUseCase,
+            PipelineExceptionUseCase pipelineExceptionUseCase,
+            CallbackStatusInterpreter callbackStatusInterpreter) {
         this.inboundDeleteContextMapper = inboundDeleteContextMapper;
         this.createPendingAcolhimentoUseCase = createPendingAcolhimentoUseCase;
         this.deleteNucleoPatientResponsavelUseCase = deleteNucleoPatientResponsavelUseCase;
         this.deleteNucleoPatientUseCase = deleteNucleoPatientUseCase;
-        this.deleteAcolhimentoUseCase = deleteAcolhimentoUseCase;
+        this.acolhimentoPort = acolhimentoPort;
         this.deleteOutboxCommandUseCase = deleteOutboxCommandUseCase;
         this.deleteProgramaUseCase = deleteProgramaUseCase;
         this.validateDeleteProgressUseCase = validateDeleteProgressUseCase;
         this.markPendingCreateUseCase = markPendingCreateUseCase;
         this.findPendingByEventIdUseCase = findPendingByEventIdUseCase;
         this.findTargetsByEventIdUseCase = findTargetsByEventIdUseCase;
-        this.objectMapper = objectMapper;
+        this.buildPatientSnapshotUseCase = buildPatientSnapshotUseCase;
+        this.pipelineExceptionUseCase = pipelineExceptionUseCase;
+        this.callbackStatusInterpreter = callbackStatusInterpreter;
     }
 
-    public void deleteByPatientId(
+    public SuccessResponseDTO deleteByPatientId(
             UUID pathPatientId,
-            InboundEnvelopeDTO<AcolhimentoDeleteDTO> envelop) {
-        InboundDeleteContextDTO context = inboundDeleteContextMapper.fromDelete(pathPatientId, envelop);
+            HttpEnvelopeDTO<AcolhimentoDeleteDTO> envelop) {
+        InboundContextDTO<AcolhimentoDeleteDTO> context = inboundDeleteContextMapper.fromDelete(pathPatientId, envelop);
         UUID patientId = context.payload().patientId();
         UUID correlationId = context.envelop().correlationId();
-        String correlationIdText = correlationId != null ? correlationId.toString() : null;
+        String correlationIdText = context.correlationIdText();
 
         validateDeleteProgressUseCase.execute(patientId, correlationIdText);
-
-        Acolhimento acolhimento = findAcolhimentoByPatientIdRetrieveUseCase.execute(patientId, correlationIdText);
-        InboundAcolhimentoDTO snapshot = buildSnapshot(acolhimento, patientId);
 
         PendingAcolhimento pending = createPendingAcolhimentoUseCase.execute(
                 correlationId,
                 patientId,
                 OperationType.DELETE,
-                serializeSnapshot(snapshot, correlationIdText));
+                buildPatientSnapshotUseCase.serialize(patientId, correlationIdText));
 
         try {
             deleteOutboxCommandUseCase.execute(
                     context.envelop(),
                     pending.getEventId(),
-                    acolhimento.getId());
+                    patientId);
         } catch (Exception ex) {
-            safeMarkPendingAsError(pending.getEventId());
-            throw unwrap(ex, correlationIdText);
+            markPendingCreateUseCase.markErrorQuietly(pending.getEventId());
+            throw pipelineExceptionUseCase.toPersistenceFailure(
+                    ex, correlationIdText, "Falha no pipeline de delete");
         }
+
+        return new SuccessResponseDTO(
+                "ACOLHIMENTO_DELETED",
+                correlationIdText,
+                "Acolhimento removido com sucesso",
+                patientId);
     }
 
     public void handlePostCallbackSaga(UUID eventId, String completedTarget, String callbackStatus) {
-        if (!"PROCESSED".equalsIgnoreCase(callbackStatus)) {
+        if (!callbackStatusInterpreter.isProcessed(callbackStatus)) {
             return;
         }
 
@@ -143,66 +133,18 @@ public class AcolhimentoDeleteService {
             try {
                 executeLocalDelete(updated.getPatientId());
             } catch (Exception ex) {
-                safeMarkPendingAsError(eventId);
-                throw unwrap(ex,
-                        updated.getCorrelationId() != null ? updated.getCorrelationId().toString() : null);
+                markPendingCreateUseCase.markErrorQuietly(eventId);
+                throw pipelineExceptionUseCase.toPersistenceFailure(
+                        ex,
+                        updated.getCorrelationId() != null ? updated.getCorrelationId().toString() : null,
+                        "Falha no pipeline de delete");
             }
         }
     }
 
     private void executeLocalDelete(UUID patientId) {
+        acolhimentoPort.deleteByPatientId(patientId);
         deleteNucleoPatientResponsavelUseCase.execute(patientId);
         deleteNucleoPatientUseCase.execute(patientId);
-        deleteAcolhimentoUseCase.execute(patientId);
-    }
-
-    private void safeMarkPendingAsError(UUID eventId) {
-        try {
-            markPendingCreateUseCase.markError(eventId);
-        } catch (Exception ex) {
-            log.error("Falha ao marcar pending_acolhimento como ERROR no DELETE. eventId={}", eventId, ex);
-        }
-    }
-
-    private AcolhimentoException unwrap(Exception ex, String correlationId) {
-        if (ex instanceof AcolhimentoException acolhimentoException) {
-            return acolhimentoException;
-        }
-        String message = ex != null && ex.getMessage() != null
-                ? ex.getMessage()
-                : "Falha no pipeline de delete";
-        return new AcolhimentoException(ReasonCode.PERSISTENCE_FAILURE, correlationId, message);
-    }
-
-    private InboundAcolhimentoDTO buildSnapshot(Acolhimento acolhimento, UUID patientId) {
-        var nucleoPatients = findNucleoPatientByPatientIdRetrieveUseCase.execute(patientId);
-        var nucleoPatientDTOs = nucleoPatients.stream()
-                .map(nucleoPatient -> new NucleoPatientDTO(
-                        nucleoPatient.getNucleoId(),
-                        findNucleoPatientResponsavelByNucleoPatientIdRetrieveUseCase.execute(nucleoPatient.getId())
-                                .stream()
-                                .map(responsavel -> new NucleoResponsavelDTO(
-                                        responsavel.getResponsavelId(),
-                                        responsavel.getRole() != null ? responsavel.getRole().name() : null))
-                                .toList()))
-                .toList();
-
-        return new InboundAcolhimentoDTO(
-                acolhimento.getPatientId(),
-                acolhimento.getDataAnamnese(),
-                acolhimento.getHoraAnamnese(),
-                acolhimento.getObservacoes(),
-                nucleoPatientDTOs);
-    }
-
-    private String serializeSnapshot(InboundAcolhimentoDTO snapshot, String correlationId) {
-        try {
-            return objectMapper.writeValueAsString(snapshot);
-        } catch (JsonProcessingException ex) {
-            throw new AcolhimentoException(
-                    ReasonCode.PERSISTENCE_FAILURE,
-                    correlationId,
-                    "Falha ao serializar payloadSnapshot de pending_acolhimento para delete");
-        }
     }
 }

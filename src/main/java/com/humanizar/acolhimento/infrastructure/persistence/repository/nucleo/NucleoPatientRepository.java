@@ -16,6 +16,8 @@ public interface NucleoPatientRepository extends JpaRepository<NucleoPatientEnti
 
     Optional<NucleoPatientEntity> findByPatientIdAndNucleoId(UUID patientId, UUID nucleoId);
 
+    boolean existsByPatientId(UUID patientId);
+
     void deleteByPatientId(UUID patientId);
 
     void deleteByIdIn(List<UUID> ids);

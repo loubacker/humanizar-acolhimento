@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.humanizar.acolhimento.domain.port.acolhimento.AcolhimentoPort;
 import com.humanizar.acolhimento.domain.port.nucleo.NucleoPatientPort;
 import com.humanizar.acolhimento.domain.port.nucleo.NucleoPatientResponsavelPort;
 
@@ -18,19 +17,15 @@ public class DeleteCreateCompensationUseCase {
 
     private final NucleoPatientResponsavelPort nucleoPatientResponsavelPort;
     private final NucleoPatientPort nucleoPatientPort;
-    private final AcolhimentoPort acolhimentoPort;
 
     public DeleteCreateCompensationUseCase(
             NucleoPatientResponsavelPort nucleoPatientResponsavelPort,
-            NucleoPatientPort nucleoPatientPort,
-            AcolhimentoPort acolhimentoPort) {
+            NucleoPatientPort nucleoPatientPort) {
         this.nucleoPatientResponsavelPort = nucleoPatientResponsavelPort;
         this.nucleoPatientPort = nucleoPatientPort;
-        this.acolhimentoPort = acolhimentoPort;
     }
 
     public void execute(
-            UUID acolhimentoId,
             List<UUID> nucleoPatientIds,
             List<UUID> nucleoPatientResponsavelIds) {
         try {
@@ -43,12 +38,6 @@ public class DeleteCreateCompensationUseCase {
             nucleoPatientPort.deleteByIds(nucleoPatientIds);
         } catch (Exception ex) {
             log.error("Falha na compensacao de nucleo_patient. ids={}", nucleoPatientIds, ex);
-        }
-
-        try {
-            acolhimentoPort.deleteById(acolhimentoId);
-        } catch (Exception ex) {
-            log.error("Falha na compensacao de acolhimento. id={}", acolhimentoId, ex);
         }
     }
 }

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.humanizar.acolhimento.application.outbound.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
 import com.humanizar.acolhimento.infrastructure.config.ObjectMapperConfig;
 
 class ProcessingResultCallbackDTODeserializationTest {

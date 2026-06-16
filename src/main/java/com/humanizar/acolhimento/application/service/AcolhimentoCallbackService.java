@@ -4,7 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.humanizar.acolhimento.application.outbound.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.CallbackStatusInterpreter;
+import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
 import com.humanizar.acolhimento.application.usecase.callback.FinalizePendingAcolhimentoUseCase;
 import com.humanizar.acolhimento.application.usecase.callback.CheckDuplicateEventUseCase;
 import com.humanizar.acolhimento.application.usecase.callback.SaveProcessedEventUseCase;
@@ -23,22 +24,24 @@ public class AcolhimentoCallbackService {
     private final FinalizePendingAcolhimentoUseCase finalizePendingAcolhimentoUseCase;
     private final SaveProcessedEventUseCase saveProcessedEventUseCase;
     private final AcolhimentoDeleteService acolhimentoDeleteService;
+    private final CallbackStatusInterpreter callbackStatusInterpreter;
 
     public AcolhimentoCallbackService(
             CheckDuplicateEventUseCase checkDuplicateEventUseCase,
             UpdateCallbackUseCase updatePendingTargetStatusFromCallbackUseCase,
             FinalizePendingAcolhimentoUseCase finalizePendingAcolhimentoUseCase,
             SaveProcessedEventUseCase saveProcessedEventUseCase,
-            AcolhimentoDeleteService acolhimentoDeleteService) {
+            AcolhimentoDeleteService acolhimentoDeleteService,
+            CallbackStatusInterpreter callbackStatusInterpreter) {
         this.checkDuplicateEventUseCase = checkDuplicateEventUseCase;
         this.updatePendingTargetStatusFromCallbackUseCase = updatePendingTargetStatusFromCallbackUseCase;
         this.finalizePendingAcolhimentoUseCase = finalizePendingAcolhimentoUseCase;
         this.saveProcessedEventUseCase = saveProcessedEventUseCase;
         this.acolhimentoDeleteService = acolhimentoDeleteService;
+        this.callbackStatusInterpreter = callbackStatusInterpreter;
     }
 
     public void processCallback(String consumerName, String targetService, CallbackDTO callback) {
-        validateCallback(callback);
 
         String correlationId = callback.correlationId() != null ? callback.correlationId().toString() : null;
         try {
@@ -63,28 +66,6 @@ public class AcolhimentoCallbackService {
     }
 
     private Status resolveTargetStatus(String callbackStatus) {
-        return "PROCESSED".equalsIgnoreCase(callbackStatus) ? Status.SUCCESS : Status.ERROR;
-    }
-
-    private void validateCallback(CallbackDTO callback) {
-        if (callback == null) {
-            throw new AcolhimentoException(ReasonCode.VALIDATION_ERROR, null, "callback e obrigatorio");
-        }
-
-        String correlationId = callback.correlationId() != null ? callback.correlationId().toString() : null;
-
-        if (callback.eventId() == null) {
-            throw new AcolhimentoException(
-                    ReasonCode.VALIDATION_ERROR,
-                    correlationId,
-                    "callback.eventId e obrigatorio");
-        }
-
-        if (callback.status() == null || callback.status().isBlank()) {
-            throw new AcolhimentoException(
-                    ReasonCode.VALIDATION_ERROR,
-                    correlationId,
-                    "callback.status e obrigatorio");
-        }
+        return callbackStatusInterpreter.isProcessed(callbackStatus) ? Status.SUCCESS : Status.ERROR;
     }
 }

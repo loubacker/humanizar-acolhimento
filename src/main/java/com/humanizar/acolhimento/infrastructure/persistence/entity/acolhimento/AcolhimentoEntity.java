@@ -15,7 +15,7 @@ import jakarta.persistence.UniqueConstraint;
 
 @Entity
 @Table(name = "acolhimento", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_acolhimento_patient_id", columnNames = "patient_id")
+        @UniqueConstraint(name = "uk_acolhimento_nucleo_patient", columnNames = { "nucleo_patient_id" })
 }, indexes = {
         @Index(name = "idx_acolhimento_updated_at", columnList = "updated_at")
 })
@@ -25,8 +25,8 @@ public class AcolhimentoEntity {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "patient_id", nullable = false)
-    private UUID patientId;
+    @Column(name = "nucleo_patient_id", nullable = false)
+    private UUID nucleoPatientId;
 
     @Column(name = "data_anamnese")
     private LocalDate dataAnamnese;
@@ -46,10 +46,10 @@ public class AcolhimentoEntity {
     public AcolhimentoEntity() {
     }
 
-    public AcolhimentoEntity(UUID id, UUID patientId, LocalDate dataAnamnese, LocalTime horaAnamnese,
+    public AcolhimentoEntity(UUID id, UUID nucleoPatientId, LocalDate dataAnamnese, LocalTime horaAnamnese,
             String observacoes, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
-        this.patientId = patientId;
+        this.nucleoPatientId = nucleoPatientId;
         this.dataAnamnese = dataAnamnese;
         this.horaAnamnese = horaAnamnese;
         this.observacoes = observacoes;
@@ -65,12 +65,12 @@ public class AcolhimentoEntity {
         this.id = id;
     }
 
-    public UUID getPatientId() {
-        return patientId;
+    public UUID getNucleoPatientId() {
+        return nucleoPatientId;
     }
 
-    public void setPatientId(UUID patientId) {
-        this.patientId = patientId;
+    public void setNucleoPatientId(UUID nucleoPatientId) {
+        this.nucleoPatientId = nucleoPatientId;
     }
 
     public LocalDate getDataAnamnese() {
@@ -123,7 +123,7 @@ public class AcolhimentoEntity {
         }
         AcolhimentoEntity that = (AcolhimentoEntity) o;
         return Objects.equals(id, that.id)
-                && Objects.equals(patientId, that.patientId)
+                && Objects.equals(nucleoPatientId, that.nucleoPatientId)
                 && Objects.equals(dataAnamnese, that.dataAnamnese)
                 && Objects.equals(horaAnamnese, that.horaAnamnese)
                 && Objects.equals(observacoes, that.observacoes)
@@ -133,14 +133,14 @@ public class AcolhimentoEntity {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, patientId, dataAnamnese, horaAnamnese, observacoes, createdAt, updatedAt);
+        return Objects.hash(id, nucleoPatientId, dataAnamnese, horaAnamnese, observacoes, createdAt, updatedAt);
     }
 
     @Override
     public String toString() {
         return "AcolhimentoEntity{" +
                 "id=" + id +
-                ", patientId=" + patientId +
+                ", nucleoPatientId=" + nucleoPatientId +
                 ", dataAnamnese=" + dataAnamnese +
                 ", horaAnamnese=" + horaAnamnese +
                 ", observacoes='" + observacoes + '\'' +

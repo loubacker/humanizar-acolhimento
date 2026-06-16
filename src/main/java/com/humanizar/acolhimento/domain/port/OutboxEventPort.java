@@ -14,12 +14,11 @@ public interface OutboxEventPort {
 
     Optional<OutboxEvent> findByEventId(UUID eventId);
 
+    Optional<OutboxEvent> findByEventIdForUpdate(UUID eventId);
+
     List<OutboxEvent> findByCorrelationId(UUID correlationId);
 
     List<OutboxEvent> findByAggregateTypeAndAggregateId(String aggregateType, UUID aggregateId);
-
-    List<OutboxEvent> findByStatusInAndNextRetryAtLessThanEqualOrderByCreatedAtAsc(
-            List<OutboxStatus> status, LocalDateTime cutoff);
 
     List<OutboxEvent> findPendingForRelay(List<OutboxStatus> status, LocalDateTime cutoff, int limit);
 

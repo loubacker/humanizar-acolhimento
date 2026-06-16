@@ -5,7 +5,8 @@ import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.humanizar.acolhimento.application.outbound.CallbackDTO;
+import com.humanizar.acolhimento.application.messaging.inbound.CallbackStatusInterpreter;
+import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
 import com.humanizar.acolhimento.domain.model.ProcessedEvent;
 import com.humanizar.acolhimento.domain.model.enums.ProcessedResult;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
@@ -15,9 +16,13 @@ import com.humanizar.acolhimento.domain.port.ProcessedEventPort;
 public class SaveProcessedEventUseCase {
 
     private final ProcessedEventPort processedEventPort;
+    private final CallbackStatusInterpreter callbackStatusInterpreter;
 
-    public SaveProcessedEventUseCase(ProcessedEventPort processedEventPort) {
+    public SaveProcessedEventUseCase(
+            ProcessedEventPort processedEventPort,
+            CallbackStatusInterpreter callbackStatusInterpreter) {
         this.processedEventPort = processedEventPort;
+        this.callbackStatusInterpreter = callbackStatusInterpreter;
     }
 
     @Transactional
@@ -42,7 +47,7 @@ public class SaveProcessedEventUseCase {
     }
 
     private ProcessedResult resolveResult(String status) {
-        return "PROCESSED".equalsIgnoreCase(status) ? ProcessedResult.SUCCESS : ProcessedResult.FAILED;
+        return callbackStatusInterpreter.isProcessed(status) ? ProcessedResult.SUCCESS : ProcessedResult.FAILED;
     }
 
     private ReasonCode resolveReasonCode(String reasonCode) {

@@ -3,45 +3,38 @@ package com.humanizar.acolhimento.domain.model.acolhimento;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-
-import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
 
 public class Acolhimento {
 
     private UUID id;
-    private UUID patientId;
+    private UUID nucleoPatientId;
     private LocalDate dataAnamnese;
     private LocalTime horaAnamnese;
     private String observacoes;
-    private List<NucleoPatient> nucleoPatient;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Construtores
     public Acolhimento() {
     }
 
-    public Acolhimento(UUID id, UUID patientId, LocalDate dataAnamnese, LocalTime horaAnamnese, String observacoes,
-            List<NucleoPatient> nucleoPatient, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public Acolhimento(UUID id, UUID nucleoPatientId, LocalDate dataAnamnese, LocalTime horaAnamnese,
+            String observacoes, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
-        this.patientId = patientId;
+        this.nucleoPatientId = nucleoPatientId;
         this.dataAnamnese = dataAnamnese;
         this.horaAnamnese = horaAnamnese;
         this.observacoes = observacoes;
-        this.nucleoPatient = nucleoPatient;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
 
-    public Acolhimento(UUID patientId, LocalDate dataAnamnese, LocalTime horaAnamnese, String observacoes,
-            List<NucleoPatient> nucleoPatient, LocalDateTime createdAt, LocalDateTime updatedAt) {
-        this(null, patientId, dataAnamnese, horaAnamnese, observacoes, nucleoPatient, createdAt, updatedAt);
+    public Acolhimento(UUID nucleoPatientId, LocalDate dataAnamnese, LocalTime horaAnamnese,
+            String observacoes, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(null, nucleoPatientId, dataAnamnese, horaAnamnese, observacoes, createdAt, updatedAt);
     }
 
-    // Getters e Setters
     public UUID getId() {
         return id;
     }
@@ -50,12 +43,12 @@ public class Acolhimento {
         this.id = id;
     }
 
-    public UUID getPatientId() {
-        return patientId;
+    public UUID getNucleoPatientId() {
+        return nucleoPatientId;
     }
 
-    public void setPatientId(UUID patientId) {
-        this.patientId = patientId;
+    public void setNucleoPatientId(UUID nucleoPatientId) {
+        this.nucleoPatientId = nucleoPatientId;
     }
 
     public LocalDate getDataAnamnese() {
@@ -82,14 +75,6 @@ public class Acolhimento {
         this.observacoes = observacoes;
     }
 
-    public List<NucleoPatient> getNucleoPatient() {
-        return nucleoPatient;
-    }
-
-    public void setNucleoPatient(List<NucleoPatient> nucleoPatient) {
-        this.nucleoPatient = nucleoPatient;
-    }
-
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -106,18 +91,16 @@ public class Acolhimento {
         this.updatedAt = updatedAt;
     }
 
-    // Builder Estático
     public static Builder builder() {
         return new Builder();
     }
 
     public static class Builder {
         private UUID id;
-        private UUID patientId;
+        private UUID nucleoPatientId;
         private LocalDate dataAnamnese;
         private LocalTime horaAnamnese;
         private String observacoes;
-        private List<NucleoPatient> nucleoPatient;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -126,8 +109,8 @@ public class Acolhimento {
             return this;
         }
 
-        public Builder patientId(UUID patientId) {
-            this.patientId = patientId;
+        public Builder nucleoPatientId(UUID nucleoPatientId) {
+            this.nucleoPatientId = nucleoPatientId;
             return this;
         }
 
@@ -146,11 +129,6 @@ public class Acolhimento {
             return this;
         }
 
-        public Builder nucleoPatient(List<NucleoPatient> nucleoPatient) {
-            this.nucleoPatient = nucleoPatient;
-            return this;
-        }
-
         public Builder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -162,12 +140,10 @@ public class Acolhimento {
         }
 
         public Acolhimento build() {
-            return new Acolhimento(id, patientId, dataAnamnese, horaAnamnese, observacoes, nucleoPatient, createdAt,
-                    updatedAt);
+            return new Acolhimento(id, nucleoPatientId, dataAnamnese, horaAnamnese, observacoes, createdAt, updatedAt);
         }
     }
 
-    // equals, hashCode, toString
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -178,30 +154,27 @@ public class Acolhimento {
         }
         Acolhimento that = (Acolhimento) o;
         return Objects.equals(id, that.id)
-                && Objects.equals(patientId, that.patientId)
+                && Objects.equals(nucleoPatientId, that.nucleoPatientId)
                 && Objects.equals(dataAnamnese, that.dataAnamnese)
                 && Objects.equals(horaAnamnese, that.horaAnamnese)
                 && Objects.equals(observacoes, that.observacoes)
-                && Objects.equals(nucleoPatient, that.nucleoPatient)
                 && Objects.equals(createdAt, that.createdAt)
                 && Objects.equals(updatedAt, that.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, patientId, dataAnamnese, horaAnamnese, observacoes, nucleoPatient, createdAt,
-                updatedAt);
+        return Objects.hash(id, nucleoPatientId, dataAnamnese, horaAnamnese, observacoes, createdAt, updatedAt);
     }
 
     @Override
     public String toString() {
         return "Acolhimento{" +
                 "id=" + id +
-                ", patientId=" + patientId +
+                ", nucleoPatientId=" + nucleoPatientId +
                 ", dataAnamnese=" + dataAnamnese +
                 ", horaAnamnese=" + horaAnamnese +
                 ", observacoes='" + observacoes + '\'' +
-                ", nucleoPatient=" + nucleoPatient +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 '}';

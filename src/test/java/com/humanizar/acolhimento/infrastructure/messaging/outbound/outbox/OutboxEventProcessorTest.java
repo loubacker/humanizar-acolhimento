@@ -40,6 +40,7 @@ import com.humanizar.acolhimento.domain.model.peding.PendingTargetStatus;
 import com.humanizar.acolhimento.domain.port.OutboxEventPort;
 import com.humanizar.acolhimento.domain.port.peding.PendingTargetStatusPort;
 import com.humanizar.acolhimento.infrastructure.messaging.outbound.rabbit.RabbitOutboxPublisher;
+import com.humanizar.acolhimento.infrastructure.messaging.outbound.recall.RecallPolicy;
 
 @ExtendWith(MockitoExtension.class)
 class OutboxEventProcessorTest {
@@ -58,6 +59,9 @@ class OutboxEventProcessorTest {
 
     @Mock
     private FindPendingByEventIdUseCase findPendingByEventIdUseCase;
+
+    @Mock
+    private RecallPolicy recallPolicy;
 
     @InjectMocks
     private OutboxEventProcessor outboxEventProcessor;
@@ -84,6 +88,23 @@ class OutboxEventProcessorTest {
         assertNotNull(event.getLockedBy());
         assertNotNull(event.getNextRetryAt());
         verify(outboxEventPort).save(event);
+    }
+
+    @Test
+    void shouldNeverClaimAuditStatusEvents() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<OutboxStatus>> statusCaptor = ArgumentCaptor.forClass(List.class);
+        when(outboxEventPort.findPendingForRelay(statusCaptor.capture(), any(LocalDateTime.class), anyInt()))
+                .thenReturn(List.of());
+
+        outboxEventProcessor.claimBatch(50);
+
+        List<OutboxStatus> requestedStatuses = statusCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertFalse(requestedStatuses.contains(OutboxStatus.AUDIT));
+        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.NEW));
+        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.FAILED));
+        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.LOCKED));
+        org.junit.jupiter.api.Assertions.assertEquals(3, requestedStatuses.size());
     }
 
     @Test
