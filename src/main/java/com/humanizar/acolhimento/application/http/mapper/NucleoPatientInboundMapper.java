@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoResponsavelDTO;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.domain.model.enums.ResponsavelRole;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
@@ -56,11 +57,13 @@ public class NucleoPatientInboundMapper {
             List<NucleoPatientDTO> dtos,
             UUID patientId,
             Map<UUID, UUID> idsByNucleoId,
+            Map<UUID, AnamneseStatus> statusByNucleoId,
             String correlationId) {
         fieldValidator.requireField(patientId, "acolhimento.patientId", correlationId);
         List<NucleoPatientDTO> validated = validateNucleos(dtos, correlationId);
         Map<UUID, UUID> resolvedIds = fieldValidator.requireField(idsByNucleoId, "nucleoPatientIdsByNucleoId",
                 correlationId);
+        Map<UUID, AnamneseStatus> resolvedStatus = statusByNucleoId != null ? statusByNucleoId : Map.of();
 
         List<NucleoPatient> result = new ArrayList<>(validated.size());
         for (NucleoPatientDTO dto : validated) {
@@ -73,6 +76,7 @@ public class NucleoPatientInboundMapper {
                     .id(nucleoPatientId)
                     .patientId(patientId)
                     .nucleoId(dto.nucleoId())
+                    .anamneseStatus(resolvedStatus.getOrDefault(dto.nucleoId(), AnamneseStatus.PENDENTE))
                     .nucleoPatientResponsavel(List.of())
                     .build());
         }

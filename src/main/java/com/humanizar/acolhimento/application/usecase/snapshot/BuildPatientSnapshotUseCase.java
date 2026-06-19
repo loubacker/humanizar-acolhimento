@@ -50,7 +50,10 @@ public class BuildPatientSnapshotUseCase {
                 .map(nucleoPatient -> new NucleoComAnamneseDTO(
                         nucleoPatient.getNucleoId(),
                         toResponsaveis(nucleoPatient.getId()),
-                        anamnesesByNucleoPatientId.get(nucleoPatient.getId())))
+                        anamnesesByNucleoPatientId.get(nucleoPatient.getId()),
+                        nucleoPatient.getAnamneseStatus() != null
+                                ? nucleoPatient.getAnamneseStatus().name()
+                                : null))
                 .toList();
 
         return new AcolhimentoListResponseDTO(patientId, nucleos);

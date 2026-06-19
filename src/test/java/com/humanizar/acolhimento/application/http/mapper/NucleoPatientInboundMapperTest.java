@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoResponsavelDTO;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatientResponsavel;
@@ -30,7 +31,7 @@ class NucleoPatientInboundMapperTest {
         List<NucleoPatientDTO> dtos = List.of(primeiro, segundo);
 
         Map<UUID, UUID> ids = mapper.recallIdsForCreate(dtos, CORRELATION_ID);
-        List<NucleoPatient> nucleos = mapper.toDomainList(dtos, patientId, ids, CORRELATION_ID);
+        List<NucleoPatient> nucleos = mapper.toDomainList(dtos, patientId, ids, Map.of(), CORRELATION_ID);
         List<NucleoPatientResponsavel> responsaveis = mapper.toResponsavelList(dtos, ids, CORRELATION_ID);
 
         assertEquals(2, ids.size());
@@ -39,6 +40,32 @@ class NucleoPatientInboundMapperTest {
         assertEquals(patientId, nucleos.get(0).getPatientId());
         assertEquals(ids.get(primeiro.nucleoId()), nucleos.get(0).getId());
         assertEquals(ids.get(segundo.nucleoId()), nucleos.get(1).getId());
+        assertEquals(AnamneseStatus.PENDENTE, nucleos.get(0).getAnamneseStatus());
+        assertEquals(AnamneseStatus.PENDENTE, nucleos.get(1).getAnamneseStatus());
+    }
+
+    @Test
+    void shouldPreserveAnamneseStatusForExistingNucleoAndDefaultPendingForNew() {
+        UUID patientId = UUID.randomUUID();
+        UUID nucleoExistente = UUID.randomUUID();
+        UUID nucleoNovo = UUID.randomUUID();
+        List<NucleoPatientDTO> dtos = List.of(
+                nucleo(nucleoExistente, responsavel("COORDENADOR")),
+                nucleo(nucleoNovo, responsavel("ADMINISTRADOR")));
+
+        Map<UUID, UUID> ids = mapper.recallIdsForCreate(dtos, CORRELATION_ID);
+        Map<UUID, AnamneseStatus> statusByNucleoId = Map.of(nucleoExistente, AnamneseStatus.ENTREGUE);
+        List<NucleoPatient> nucleos = mapper.toDomainList(dtos, patientId, ids, statusByNucleoId, CORRELATION_ID);
+
+        AnamneseStatus statusExistente = nucleos.stream()
+                .filter(nucleo -> nucleo.getNucleoId().equals(nucleoExistente))
+                .findFirst().orElseThrow().getAnamneseStatus();
+        AnamneseStatus statusNovo = nucleos.stream()
+                .filter(nucleo -> nucleo.getNucleoId().equals(nucleoNovo))
+                .findFirst().orElseThrow().getAnamneseStatus();
+
+        assertEquals(AnamneseStatus.ENTREGUE, statusExistente);
+        assertEquals(AnamneseStatus.PENDENTE, statusNovo);
     }
 
     @Test

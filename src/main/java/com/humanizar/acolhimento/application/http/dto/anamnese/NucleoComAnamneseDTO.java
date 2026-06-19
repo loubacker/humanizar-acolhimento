@@ -8,5 +8,6 @@ import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoResponsavelDT
 public record NucleoComAnamneseDTO(
         UUID nucleoId,
         List<NucleoResponsavelDTO> responsaveis,
-        AnamneseDTO anamnese) {
+        AnamneseDTO anamnese,
+        String anamneseStatus) {
 }

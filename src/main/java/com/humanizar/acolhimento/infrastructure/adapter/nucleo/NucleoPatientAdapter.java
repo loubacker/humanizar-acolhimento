@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
 import com.humanizar.acolhimento.domain.port.nucleo.NucleoPatientPort;
 import com.humanizar.acolhimento.infrastructure.persistence.entity.nucleo.NucleoPatientEntity;
@@ -48,6 +49,12 @@ public class NucleoPatientAdapter implements NucleoPatientPort {
     }
 
     @Override
+    @Transactional
+    public void updateAnamneseStatus(UUID nucleoPatientId, AnamneseStatus status) {
+        nucleoPatientRepository.updateAnamneseStatus(nucleoPatientId, status);
+    }
+
+    @Override
     public boolean existsByPatientId(UUID patientId) {
         return nucleoPatientRepository.existsByPatientId(patientId);
     }
@@ -74,11 +81,13 @@ public class NucleoPatientAdapter implements NucleoPatientPort {
     }
 
     private NucleoPatient toDomain(NucleoPatientEntity entity) {
-        return new NucleoPatient(
-                entity.getId(),
-                entity.getPatientId(),
-                entity.getNucleoId(),
-                List.of());
+        return NucleoPatient.builder()
+                .id(entity.getId())
+                .patientId(entity.getPatientId())
+                .nucleoId(entity.getNucleoId())
+                .anamneseStatus(entity.getAnamneseStatus())
+                .nucleoPatientResponsavel(List.of())
+                .build();
     }
 
     private NucleoPatientEntity toEntity(NucleoPatient domain) {
@@ -89,6 +98,8 @@ public class NucleoPatientAdapter implements NucleoPatientPort {
         entity.setId(id);
         entity.setPatientId(domain.getPatientId());
         entity.setNucleoId(domain.getNucleoId());
+        entity.setAnamneseStatus(
+                domain.getAnamneseStatus() != null ? domain.getAnamneseStatus() : AnamneseStatus.PENDENTE);
         return entity;
     }
 }

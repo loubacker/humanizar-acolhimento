@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import com.humanizar.acolhimento.application.http.dto.acolhimento.AcolhimentoDeleteDTO;
 import com.humanizar.acolhimento.application.http.dto.acolhimento.InboundAcolhimentoDTO;
 import com.humanizar.acolhimento.application.http.dto.acolhimento.InboundAcolhimentoMapResultDTO;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 
 @Component
 public class InboundAcolhimentoMapper {
@@ -43,12 +44,13 @@ public class InboundAcolhimentoMapper {
                 safePayload.nucleoPatient(),
                 correlationId);
 
-        return buildResult(safePayload, idsByNucleoId, correlationId);
+        return buildResult(safePayload, idsByNucleoId, Map.of(), correlationId);
     }
 
     public InboundAcolhimentoMapResultDTO mapUpdate(
             InboundAcolhimentoDTO payload,
             Map<UUID, UUID> existingIdsByNucleoId,
+            Map<UUID, AnamneseStatus> existingStatusByNucleoId,
             String correlationId) {
         InboundAcolhimentoDTO safePayload = validateAcolhimentoPayload(payload, correlationId);
 
@@ -57,17 +59,19 @@ public class InboundAcolhimentoMapper {
                 existingIdsByNucleoId,
                 correlationId);
 
-        return buildResult(safePayload, idsByNucleoId, correlationId);
+        return buildResult(safePayload, idsByNucleoId, existingStatusByNucleoId, correlationId);
     }
 
     private InboundAcolhimentoMapResultDTO buildResult(
             InboundAcolhimentoDTO payload,
             Map<UUID, UUID> idsByNucleoId,
+            Map<UUID, AnamneseStatus> statusByNucleoId,
             String correlationId) {
         var nucleoPatients = nucleoPatientInboundMapper.toDomainList(
                 payload.nucleoPatient(),
                 payload.patientId(),
                 idsByNucleoId,
+                statusByNucleoId,
                 correlationId);
 
         var responsaveis = nucleoPatientInboundMapper.toResponsavelList(

@@ -4,11 +4,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
+
 public class NucleoPatient {
 
     private UUID id;
     private UUID patientId;
     private UUID nucleoId;
+    private AnamneseStatus anamneseStatus;
     private List<NucleoPatientResponsavel> nucleoPatientResponsavel;
 
     // Construtores
@@ -52,6 +55,14 @@ public class NucleoPatient {
         this.nucleoId = nucleoId;
     }
 
+    public AnamneseStatus getAnamneseStatus() {
+        return anamneseStatus;
+    }
+
+    public void setAnamneseStatus(AnamneseStatus anamneseStatus) {
+        this.anamneseStatus = anamneseStatus;
+    }
+
     public List<NucleoPatientResponsavel> getNucleoPatientResponsavel() {
         return nucleoPatientResponsavel;
     }
@@ -69,6 +80,7 @@ public class NucleoPatient {
         private UUID id;
         private UUID patientId;
         private UUID nucleoId;
+        private AnamneseStatus anamneseStatus;
         private List<NucleoPatientResponsavel> nucleoPatientResponsavel;
 
         public Builder id(UUID id) {
@@ -86,13 +98,20 @@ public class NucleoPatient {
             return this;
         }
 
+        public Builder anamneseStatus(AnamneseStatus anamneseStatus) {
+            this.anamneseStatus = anamneseStatus;
+            return this;
+        }
+
         public Builder nucleoPatientResponsavel(List<NucleoPatientResponsavel> nucleoPatientResponsavel) {
             this.nucleoPatientResponsavel = nucleoPatientResponsavel;
             return this;
         }
 
         public NucleoPatient build() {
-            return new NucleoPatient(id, patientId, nucleoId, nucleoPatientResponsavel);
+            NucleoPatient nucleoPatient = new NucleoPatient(id, patientId, nucleoId, nucleoPatientResponsavel);
+            nucleoPatient.setAnamneseStatus(anamneseStatus);
+            return nucleoPatient;
         }
     }
 
@@ -123,6 +142,7 @@ public class NucleoPatient {
                 "id=" + id +
                 ", patientId=" + patientId +
                 ", nucleoId=" + nucleoId +
+                ", anamneseStatus=" + anamneseStatus +
                 ", nucleoPatientResponsavel=" + nucleoPatientResponsavel +
                 '}';
     }

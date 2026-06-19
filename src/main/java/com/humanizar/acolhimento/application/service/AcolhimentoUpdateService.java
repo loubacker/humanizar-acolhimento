@@ -24,6 +24,7 @@ import com.humanizar.acolhimento.application.usecase.delete.DeleteNucleoPatientU
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientUseCase;
 import com.humanizar.acolhimento.application.usecase.exception.PipelineExceptionUseCase;
 import com.humanizar.acolhimento.application.usecase.snapshot.BuildPatientSnapshotUseCase;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.enums.OperationType;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
 import com.humanizar.acolhimento.domain.model.peding.PendingAcolhimento;
@@ -86,10 +87,12 @@ public class AcolhimentoUpdateService {
 
         List<NucleoPatient> existingNucleoPatients = retrieveNucleoPatientUseCase.execute(patientId);
         Map<UUID, UUID> existingIdsByNucleoId = toExistingIdsByNucleoId(existingNucleoPatients);
+        Map<UUID, AnamneseStatus> existingStatusByNucleoId = toExistingStatusByNucleoId(existingNucleoPatients);
 
         InboundAcolhimentoMapResultDTO mappingResult = inboundAcolhimentoMapper.mapUpdate(
                 payload,
                 existingIdsByNucleoId,
+                existingStatusByNucleoId,
                 correlationIdText);
 
         PendingAcolhimento pending = createPendingAcolhimentoUseCase.execute(
@@ -145,5 +148,23 @@ public class AcolhimentoUpdateService {
             idsByNucleoId.putIfAbsent(nucleoPatient.getNucleoId(), nucleoPatient.getId());
         }
         return idsByNucleoId;
+    }
+
+    private Map<UUID, AnamneseStatus> toExistingStatusByNucleoId(List<NucleoPatient> existingNucleoPatients) {
+        Map<UUID, AnamneseStatus> statusByNucleoId = new LinkedHashMap<>();
+        if (existingNucleoPatients == null) {
+            return statusByNucleoId;
+        }
+
+        for (NucleoPatient nucleoPatient : existingNucleoPatients) {
+            if (nucleoPatient == null || nucleoPatient.getNucleoId() == null) {
+                continue;
+            }
+            AnamneseStatus status = nucleoPatient.getAnamneseStatus() != null
+                    ? nucleoPatient.getAnamneseStatus()
+                    : AnamneseStatus.PENDENTE;
+            statusByNucleoId.putIfAbsent(nucleoPatient.getNucleoId(), status);
+        }
+        return statusByNucleoId;
     }
 }

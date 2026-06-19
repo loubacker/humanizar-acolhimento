@@ -3,8 +3,12 @@ package com.humanizar.acolhimento.infrastructure.persistence.entity.nucleo;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
@@ -27,6 +31,10 @@ public class NucleoPatientEntity {
 
     @Column(name = "nucleo_id", nullable = false)
     private UUID nucleoId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "anamnese_status", nullable = false)
+    private AnamneseStatus anamneseStatus;
 
     public NucleoPatientEntity() {
     }
@@ -61,6 +69,14 @@ public class NucleoPatientEntity {
         this.nucleoId = nucleoId;
     }
 
+    public AnamneseStatus getAnamneseStatus() {
+        return anamneseStatus;
+    }
+
+    public void setAnamneseStatus(AnamneseStatus anamneseStatus) {
+        this.anamneseStatus = anamneseStatus;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -72,12 +88,13 @@ public class NucleoPatientEntity {
         NucleoPatientEntity that = (NucleoPatientEntity) o;
         return Objects.equals(id, that.id)
                 && Objects.equals(patientId, that.patientId)
-                && Objects.equals(nucleoId, that.nucleoId);
+                && Objects.equals(nucleoId, that.nucleoId)
+                && anamneseStatus == that.anamneseStatus;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, patientId, nucleoId);
+        return Objects.hash(id, patientId, nucleoId, anamneseStatus);
     }
 
     @Override
@@ -86,6 +103,7 @@ public class NucleoPatientEntity {
                 "id=" + id +
                 ", patientId=" + patientId +
                 ", nucleoId=" + nucleoId +
+                ", anamneseStatus=" + anamneseStatus +
                 '}';
     }
 }

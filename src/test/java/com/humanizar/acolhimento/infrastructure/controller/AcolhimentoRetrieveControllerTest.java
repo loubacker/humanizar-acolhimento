@@ -66,7 +66,8 @@ class AcolhimentoRetrieveControllerTest {
                                                 new AnamneseDTO(
                                                                 LocalDate.of(2026, 3, 11),
                                                                 LocalTime.of(10, 30),
-                                                                "Observacao de teste"))));
+                                                                "Observacao de teste"),
+                                                "ENTREGUE")));
 
                 when(acolhimentoRetrieveService.findByPatientId(patientId)).thenReturn(payload);
 
@@ -79,7 +80,8 @@ class AcolhimentoRetrieveControllerTest {
                                 .andExpect(jsonPath("$.nucleos[0].responsaveis[0].role").value("COORDENADOR"))
                                 .andExpect(jsonPath("$.nucleos[0].anamnese.dataAnamnese").value("2026-03-11"))
                                 .andExpect(jsonPath("$.nucleos[0].anamnese.horaAnamnese").value("10:30:00"))
-                                .andExpect(jsonPath("$.nucleos[0].anamnese.observacoes").value("Observacao de teste"));
+                                .andExpect(jsonPath("$.nucleos[0].anamnese.observacoes").value("Observacao de teste"))
+                                .andExpect(jsonPath("$.nucleos[0].anamneseStatus").value("ENTREGUE"));
 
                 verify(acolhimentoRetrieveService).findByPatientId(patientId);
         }
@@ -94,7 +96,8 @@ class AcolhimentoRetrieveControllerTest {
                                 List.of(new NucleoComAnamneseDTO(
                                                 nucleoId,
                                                 List.of(),
-                                                null)));
+                                                null,
+                                                "PENDENTE")));
 
                 when(acolhimentoRetrieveService.findByPatientId(patientId)).thenReturn(payload);
 
@@ -102,7 +105,8 @@ class AcolhimentoRetrieveControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.patientId").value(patientId.toString()))
                                 .andExpect(jsonPath("$.nucleos[0].nucleoId").value(nucleoId.toString()))
-                                .andExpect(jsonPath("$.nucleos[0].anamnese").value(org.hamcrest.Matchers.nullValue()));
+                                .andExpect(jsonPath("$.nucleos[0].anamnese").value(org.hamcrest.Matchers.nullValue()))
+                                .andExpect(jsonPath("$.nucleos[0].anamneseStatus").value("PENDENTE"));
 
                 verify(acolhimentoRetrieveService).findByPatientId(patientId);
         }

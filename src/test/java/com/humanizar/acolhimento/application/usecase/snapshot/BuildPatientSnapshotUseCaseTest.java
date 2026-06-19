@@ -25,6 +25,7 @@ import com.humanizar.acolhimento.application.usecase.anamnese.RetrieveAnamneseUs
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientResponsavelUseCase;
 import com.humanizar.acolhimento.application.usecase.retrieve.RetrieveNucleoPatientUseCase;
 import com.humanizar.acolhimento.domain.model.acolhimento.Acolhimento;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.enums.ResponsavelRole;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatient;
 import com.humanizar.acolhimento.domain.model.nucleo.NucleoPatientResponsavel;
@@ -64,6 +65,7 @@ class BuildPatientSnapshotUseCaseTest {
                                 .id(nucleoPatientId)
                                 .patientId(patientId)
                                 .nucleoId(nucleoId)
+                                .anamneseStatus(AnamneseStatus.ENTREGUE)
                                 .nucleoPatientResponsavel(List.of())
                                 .build();
 
@@ -102,6 +104,7 @@ class BuildPatientSnapshotUseCaseTest {
                 assertEquals(LocalDate.of(2026, 3, 11), response.nucleos().get(0).anamnese().dataAnamnese());
                 assertEquals(LocalTime.of(10, 30), response.nucleos().get(0).anamnese().horaAnamnese());
                 assertEquals("observacao de teste", response.nucleos().get(0).anamnese().observacoes());
+                assertEquals("ENTREGUE", response.nucleos().get(0).anamneseStatus());
         }
 
         @Test

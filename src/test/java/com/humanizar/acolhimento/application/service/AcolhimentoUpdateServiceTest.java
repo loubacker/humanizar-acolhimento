@@ -121,7 +121,7 @@ class AcolhimentoUpdateServiceTest {
         when(inboundContextMapper.fromUpdate(patientId, envelope)).thenReturn(context);
         when(inboundAcolhimentoMapper.toUpdatePayload(payload)).thenReturn(payload);
         when(retrieveNucleoPatientUseCase.execute(patientId)).thenReturn(List.of());
-        when(inboundAcolhimentoMapper.mapUpdate(eq(payload), any(), eq(correlationId.toString())))
+        when(inboundAcolhimentoMapper.mapUpdate(eq(payload), any(), any(), eq(correlationId.toString())))
                 .thenReturn(mappingResult);
         when(createPendingAcolhimentoUseCase.execute(
                 correlationId, patientId, OperationType.UPDATE, "{}"))
@@ -174,7 +174,7 @@ class AcolhimentoUpdateServiceTest {
         when(inboundContextMapper.fromUpdate(patientId, envelope)).thenReturn(context);
         when(inboundAcolhimentoMapper.toUpdatePayload(payload)).thenReturn(payload);
         when(retrieveNucleoPatientUseCase.execute(patientId)).thenReturn(List.of());
-        when(inboundAcolhimentoMapper.mapUpdate(eq(payload), any(), eq(correlationId.toString())))
+        when(inboundAcolhimentoMapper.mapUpdate(eq(payload), any(), any(), eq(correlationId.toString())))
                 .thenReturn(mappingResult);
         when(createPendingAcolhimentoUseCase.execute(
                 correlationId, patientId, OperationType.UPDATE, "{}"))

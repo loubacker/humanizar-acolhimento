@@ -15,6 +15,7 @@ import com.humanizar.acolhimento.application.http.dto.acolhimento.InboundAcolhim
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoPatientDTO;
 import com.humanizar.acolhimento.application.http.dto.nucleo.NucleoResponsavelDTO;
 import com.humanizar.acolhimento.domain.exception.AcolhimentoException;
+import com.humanizar.acolhimento.domain.model.enums.AnamneseStatus;
 import com.humanizar.acolhimento.domain.model.enums.ReasonCode;
 
 class InboundAcolhimentoMapperTest {
@@ -52,6 +53,7 @@ class InboundAcolhimentoMapperTest {
                 InboundAcolhimentoMapResultDTO result = mapper.mapUpdate(
                                 payload,
                                 Map.of(existingNucleoId, existingNucleoPatientId),
+                                Map.of(existingNucleoId, AnamneseStatus.ENTREGUE),
                                 CORRELATION_ID);
 
                 assertEquals(patientId, result.patientId());
@@ -59,6 +61,15 @@ class InboundAcolhimentoMapperTest {
                 assertTrue(result.nucleoPatientIdsByNucleoId().containsKey(newNucleoId));
                 assertNotEquals(existingNucleoPatientId, result.nucleoPatientIdsByNucleoId().get(newNucleoId));
                 assertEquals(2, result.nucleoPatients().size());
+
+                AnamneseStatus statusExistente = result.nucleoPatients().stream()
+                                .filter(nucleo -> nucleo.getNucleoId().equals(existingNucleoId))
+                                .findFirst().orElseThrow().getAnamneseStatus();
+                AnamneseStatus statusNovo = result.nucleoPatients().stream()
+                                .filter(nucleo -> nucleo.getNucleoId().equals(newNucleoId))
+                                .findFirst().orElseThrow().getAnamneseStatus();
+                assertEquals(AnamneseStatus.ENTREGUE, statusExistente);
+                assertEquals(AnamneseStatus.PENDENTE, statusNovo);
         }
 
         @Test
