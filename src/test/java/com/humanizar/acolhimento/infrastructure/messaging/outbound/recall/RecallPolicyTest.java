@@ -1,6 +1,5 @@
 package com.humanizar.acolhimento.infrastructure.messaging.outbound.recall;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDateTime;
@@ -25,14 +24,14 @@ class RecallPolicyTest {
         LocalDateTime laterAttempt = policy.nextRecallAt(3);
 
         assertTrue(firstAttempt.isBefore(laterAttempt));
-        // cap em 30min: mesmo com expoente alto nao deve passar de ~31min
         assertTrue(policy.nextRecallAt(20).isBefore(LocalDateTime.now().plusMinutes(31)));
     }
 
     @Test
-    void isExhaustedShouldHonorMaxAttempts() {
-        assertFalse(policy.isExhausted(9));
-        assertTrue(policy.isExhausted(10));
-        assertTrue(policy.isExhausted(11));
+    void nextRecallAtShouldRemainCappedForHighAttemptCount() {
+        LocalDateTime highAttempt = policy.nextRecallAt(100);
+
+        assertTrue(highAttempt.isAfter(LocalDateTime.now().plusMinutes(29)));
+        assertTrue(highAttempt.isBefore(LocalDateTime.now().plusMinutes(31)));
     }
 }

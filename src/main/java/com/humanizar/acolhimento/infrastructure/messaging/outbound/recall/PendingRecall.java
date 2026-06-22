@@ -61,10 +61,6 @@ public class PendingRecall {
         }
 
         int attempts = target.getRecallAttempts() != null ? target.getRecallAttempts() : 0;
-        if (recallPolicy.isExhausted(attempts)) {
-            escalate(target, pending, attempts, "recall_exhausted");
-            return;
-        }
 
         switch (reDrive(eventId)) {
             case RE_DRIVEN -> trackReDrive(target, attempts);
@@ -77,11 +73,9 @@ public class PendingRecall {
     private ReDriveResult reDrive(UUID eventId) {
         OutboxEvent locked = outboxEventPort.findByEventIdForUpdate(eventId).orElse(null);
         if (locked != null) {
-            locked.setStatus(OutboxStatus.NEW);
-            locked.setAttemptCount(0);
+            locked.setStatus(OutboxStatus.FAILED);
             locked.setNextRetryAt(LocalDateTime.now());
             locked.setLockedBy(null);
-            locked.setLastError(null);
             outboxEventPort.save(locked);
             return ReDriveResult.RE_DRIVEN;
         }

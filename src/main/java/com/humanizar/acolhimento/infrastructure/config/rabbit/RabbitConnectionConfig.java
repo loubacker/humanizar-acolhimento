@@ -37,7 +37,15 @@ public class RabbitConnectionConfig {
 
     @Bean
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
-        return new RabbitTemplate(connectionFactory);
+        RabbitTemplate template = new RabbitTemplate(connectionFactory);
+        template.setMandatory(true);
+        template.setReturnsCallback(returned -> logger.warning(String.format(
+                "Mensagem RabbitMQ nao roteavel. exchange=%s, routingKey=%s, replyCode=%d, replyText=%s",
+                returned.getExchange(),
+                returned.getRoutingKey(),
+                returned.getReplyCode(),
+                returned.getReplyText())));
+        return template;
     }
 
     @Bean

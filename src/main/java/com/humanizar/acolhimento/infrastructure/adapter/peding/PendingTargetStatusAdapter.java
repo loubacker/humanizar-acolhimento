@@ -81,6 +81,12 @@ public class PendingTargetStatusAdapter implements PendingTargetStatusPort {
         repository.deleteByEventId(eventId);
     }
 
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void deleteByStatusInAndCreatedAtBefore(List<Status> status, LocalDateTime cutoff) {
+        repository.deleteByStatusInAndCreatedAtBefore(status, cutoff);
+    }
+
     private PendingTargetStatus toDomain(PendingTargetStatusEntity entity) {
         return new PendingTargetStatus(
                 entity.getId(),

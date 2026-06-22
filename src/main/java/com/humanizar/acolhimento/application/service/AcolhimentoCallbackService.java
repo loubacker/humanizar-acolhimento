@@ -3,6 +3,7 @@ package com.humanizar.acolhimento.application.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.humanizar.acolhimento.application.messaging.inbound.CallbackStatusInterpreter;
 import com.humanizar.acolhimento.application.messaging.inbound.dto.CallbackDTO;
@@ -41,6 +42,7 @@ public class AcolhimentoCallbackService {
         this.callbackStatusInterpreter = callbackStatusInterpreter;
     }
 
+    @Transactional
     public void processCallback(String consumerName, String targetService, CallbackDTO callback) {
 
         String correlationId = callback.correlationId() != null ? callback.correlationId().toString() : null;

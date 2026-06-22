@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.humanizar.acolhimento.application.http.dto.InboundContextDTO;
 import com.humanizar.acolhimento.application.http.dto.acolhimento.InboundAcolhimentoDTO;
@@ -75,6 +76,7 @@ public class AcolhimentoUpdateService {
         this.pipelineExceptionUseCase = pipelineExceptionUseCase;
     }
 
+    @Transactional
     public SuccessResponseDTO updateByPatientId(
             UUID pathPatientId,
             HttpEnvelopeDTO<InboundAcolhimentoDTO> envelope) {

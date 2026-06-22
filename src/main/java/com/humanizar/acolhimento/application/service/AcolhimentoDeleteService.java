@@ -3,6 +3,7 @@ package com.humanizar.acolhimento.application.service;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.humanizar.acolhimento.application.catalog.TargetCatalog;
 import com.humanizar.acolhimento.application.http.dto.InboundContextDTO;
@@ -76,6 +77,7 @@ public class AcolhimentoDeleteService {
         this.callbackStatusInterpreter = callbackStatusInterpreter;
     }
 
+    @Transactional
     public SuccessResponseDTO deleteByPatientId(
             UUID pathPatientId,
             HttpEnvelopeDTO<AcolhimentoDeleteDTO> envelop) {

@@ -23,4 +23,6 @@ public interface PendingTargetStatusPort {
     List<PendingTargetStatus> findStaleTargets(Status status, LocalDateTime now, int limit);
 
     void deleteByEventId(UUID eventId);
+
+    void deleteByStatusInAndCreatedAtBefore(List<Status> status, LocalDateTime cutoff);
 }

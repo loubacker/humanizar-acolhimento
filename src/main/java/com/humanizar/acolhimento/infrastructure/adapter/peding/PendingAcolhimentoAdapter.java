@@ -88,8 +88,8 @@ public class PendingAcolhimentoAdapter implements PendingAcolhimentoPort {
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED)
-    public void deleteByCreatedAtBefore(LocalDateTime cutoff) {
-        repository.deleteByCreatedAtBefore(cutoff);
+    public void deleteByStatusInAndCreatedAtBefore(List<Status> status, LocalDateTime cutoff) {
+        repository.deleteByStatusInAndCreatedAtBefore(status, cutoff);
     }
 
     private PendingAcolhimento toDomain(PendingAcolhimentoEntity entity) {

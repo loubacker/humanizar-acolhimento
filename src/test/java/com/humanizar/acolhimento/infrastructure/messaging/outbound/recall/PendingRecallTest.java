@@ -1,6 +1,7 @@
 package com.humanizar.acolhimento.infrastructure.messaging.outbound.recall;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -62,7 +63,7 @@ class PendingRecallTest {
     }
 
     @Test
-    void shouldReDriveStalePendingTargetResettingDeadOutbox() {
+    void shouldReDriveStalePendingTargetKeepingOutboxHistory() {
         UUID eventId = UUID.randomUUID();
         PendingTargetStatus target = target(eventId, 0);
         OutboxEvent outbox = OutboxEvent.builder()
@@ -76,7 +77,6 @@ class PendingRecallTest {
 
         when(pendingTargetStatusPort.findStaleTargets(eq(Status.PENDING), any(), anyInt())).thenReturn(List.of(target));
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(pending(eventId, Status.PENDING)));
-        when(recallPolicy.isExhausted(0)).thenReturn(false);
         when(outboxEventPort.findByEventIdForUpdate(eventId)).thenReturn(Optional.of(outbox));
         when(recallPolicy.nextRecallAt(1)).thenReturn(LocalDateTime.now().plusMinutes(1));
 
@@ -85,10 +85,11 @@ class PendingRecallTest {
         ArgumentCaptor<OutboxEvent> outboxCaptor = ArgumentCaptor.forClass(OutboxEvent.class);
         verify(outboxEventPort).save(outboxCaptor.capture());
         OutboxEvent reDriven = outboxCaptor.getValue();
-        assertEquals(OutboxStatus.NEW, reDriven.getStatus());
-        assertEquals(0, reDriven.getAttemptCount());
+        assertEquals(OutboxStatus.FAILED, reDriven.getStatus());
+        assertEquals(5, reDriven.getAttemptCount());
+        assertNotNull(reDriven.getNextRetryAt());
         assertNull(reDriven.getLockedBy());
-        assertNull(reDriven.getLastError());
+        assertEquals("Broker NACK", reDriven.getLastError());
 
         ArgumentCaptor<PendingTargetStatus> targetCaptor = ArgumentCaptor.forClass(PendingTargetStatus.class);
         verify(pendingTargetStatusPort).save(targetCaptor.capture());
@@ -102,7 +103,6 @@ class PendingRecallTest {
 
         when(pendingTargetStatusPort.findStaleTargets(eq(Status.PENDING), any(), anyInt())).thenReturn(List.of(target));
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(pending(eventId, Status.PENDING)));
-        when(recallPolicy.isExhausted(0)).thenReturn(false);
         when(outboxEventPort.findByEventIdForUpdate(eventId)).thenReturn(Optional.empty());
         when(outboxEventPort.findByEventId(eventId)).thenReturn(Optional.of(OutboxEvent.builder().eventId(eventId).build()));
 
@@ -120,7 +120,6 @@ class PendingRecallTest {
 
         when(pendingTargetStatusPort.findStaleTargets(eq(Status.PENDING), any(), anyInt())).thenReturn(List.of(target));
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(parent));
-        when(recallPolicy.isExhausted(0)).thenReturn(false);
         when(outboxEventPort.findByEventIdForUpdate(eventId)).thenReturn(Optional.empty());
         when(outboxEventPort.findByEventId(eventId)).thenReturn(Optional.empty());
 
@@ -135,22 +134,33 @@ class PendingRecallTest {
     }
 
     @Test
-    void shouldEscalateToErrorWhenCapReached() {
+    void shouldKeepReDrivingWhenPreviousCapIsReached() {
         UUID eventId = UUID.randomUUID();
         PendingTargetStatus target = target(eventId, 10);
         PendingAcolhimento parent = pending(eventId, Status.PENDING);
+        OutboxEvent outbox = OutboxEvent.builder()
+                .eventId(eventId)
+                .status(OutboxStatus.DEAD)
+                .attemptCount(5)
+                .lastError("Tentativa anterior")
+                .build();
 
         when(pendingTargetStatusPort.findStaleTargets(eq(Status.PENDING), any(), anyInt())).thenReturn(List.of(target));
         when(pendingAcolhimentoPort.findByEventId(eventId)).thenReturn(Optional.of(parent));
-        when(recallPolicy.isExhausted(10)).thenReturn(true);
+        when(outboxEventPort.findByEventIdForUpdate(eventId)).thenReturn(Optional.of(outbox));
+        when(recallPolicy.nextRecallAt(11)).thenReturn(LocalDateTime.now().plusMinutes(30));
 
         pendingRecall.recall(50);
 
-        assertEquals(Status.ERROR, target.getStatus());
-        assertEquals(Status.ERROR, parent.getStatus());
+        assertEquals(Status.PENDING, target.getStatus());
+        assertEquals(11, target.getRecallAttempts());
+        assertEquals(Status.PENDING, parent.getStatus());
+        assertEquals(OutboxStatus.FAILED, outbox.getStatus());
+        assertEquals(5, outbox.getAttemptCount());
+        assertEquals("Tentativa anterior", outbox.getLastError());
         verify(pendingTargetStatusPort).save(target);
-        verify(pendingAcolhimentoPort).save(parent);
-        verify(outboxEventPort, never()).findByEventIdForUpdate(any());
+        verify(pendingAcolhimentoPort, never()).save(parent);
+        verify(outboxEventPort).save(outbox);
     }
 
     @Test

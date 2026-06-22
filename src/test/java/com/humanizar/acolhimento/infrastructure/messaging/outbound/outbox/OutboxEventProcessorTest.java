@@ -1,7 +1,9 @@
 package com.humanizar.acolhimento.infrastructure.messaging.outbound.outbox;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -100,16 +102,17 @@ class OutboxEventProcessorTest {
         outboxEventProcessor.claimBatch(50);
 
         List<OutboxStatus> requestedStatuses = statusCaptor.getValue();
-        org.junit.jupiter.api.Assertions.assertFalse(requestedStatuses.contains(OutboxStatus.AUDIT));
-        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.NEW));
-        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.FAILED));
-        org.junit.jupiter.api.Assertions.assertTrue(requestedStatuses.contains(OutboxStatus.LOCKED));
-        org.junit.jupiter.api.Assertions.assertEquals(3, requestedStatuses.size());
+        assertFalse(requestedStatuses.contains(OutboxStatus.AUDIT));
+        assertTrue(requestedStatuses.contains(OutboxStatus.NEW));
+        assertTrue(requestedStatuses.contains(OutboxStatus.FAILED));
+        assertTrue(requestedStatuses.contains(OutboxStatus.LOCKED));
+        assertEquals(3, requestedStatuses.size());
     }
 
     @Test
     void shouldPublishAndCreatePendingTargetOnSuccess() {
         OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
+        event.setLastError("falha anterior");
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
         when(findPendingByEventIdUseCase.execute(event.getEventId())).thenReturn(Optional.of(newPending(event)));
         when(pendingTargetStatusPort.findByEventId(event.getEventId())).thenReturn(List.of());
@@ -131,7 +134,7 @@ class OutboxEventProcessorTest {
 
         assertEquals(OutboxStatus.PUBLISHED, event.getStatus());
         assertNotNull(event.getPublishedAt());
-        assertEquals(null, event.getLastError());
+        assertEquals("falha anterior", event.getLastError());
         assertEquals(null, event.getLockedBy());
     }
 
@@ -218,6 +221,7 @@ class OutboxEventProcessorTest {
         OutboxEvent event = claimOneEvent(RoutingKeyCatalog.COMMAND_ACOLHIMENTO_CREATED_V1);
         event.setAttemptCount(0);
         event.setMaxAttempts(3);
+        event.setLastError("falha anterior");
 
         when(outboxEventPort.findByEventId(event.getEventId())).thenReturn(Optional.of(event));
         when(outboxRetryPolicy.isExhausted(1, 3)).thenReturn(false);
@@ -230,6 +234,9 @@ class OutboxEventProcessorTest {
         assertEquals(1, event.getAttemptCount());
         assertNotNull(event.getNextRetryAt());
         assertNotNull(event.getLastError());
+        assertTrue(event.getLastError().contains("occurredAt="));
+        assertTrue(event.getLastError().contains("java.lang.RuntimeException: rabbit down"));
+        assertFalse(event.getLastError().contains("falha anterior"));
         assertEquals(null, event.getLockedBy());
         verify(pendingTargetStatusPort, never()).findByEventId(any(UUID.class));
     }
@@ -249,6 +256,8 @@ class OutboxEventProcessorTest {
         assertEquals(OutboxStatus.DEAD, event.getStatus());
         assertEquals(1, event.getAttemptCount());
         assertNotNull(event.getLastError());
+        assertTrue(event.getLastError().contains("occurredAt="));
+        assertTrue(event.getLastError().contains("java.lang.RuntimeException: erro final"));
         assertEquals(null, event.getLockedBy());
     }
 

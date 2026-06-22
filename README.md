@@ -148,6 +148,7 @@ Transições de status:
 
 - Remove outbox antigo (`PUBLISHED` e `DEAD`) com mais de 48h.
 - Remove `processed_event` antigo com mais de 90 dias.
+- Remove pendências de saga concluídas (`pending_acolhimento`/`pending_target_status` terminais) com mais de 90 dias.
 
 ## 🔐 Segurança
 

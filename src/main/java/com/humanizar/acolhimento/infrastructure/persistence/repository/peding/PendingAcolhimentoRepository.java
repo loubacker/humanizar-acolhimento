@@ -29,5 +29,5 @@ public interface PendingAcolhimentoRepository extends JpaRepository<PendingAcolh
 
     boolean existsByPatientIdAndOperationTypeAndStatus(UUID patientId, OperationType operationType, Status status);
 
-    void deleteByCreatedAtBefore(LocalDateTime cutoff);
+    void deleteByStatusInAndCreatedAtBefore(List<Status> status, LocalDateTime cutoff);
 }

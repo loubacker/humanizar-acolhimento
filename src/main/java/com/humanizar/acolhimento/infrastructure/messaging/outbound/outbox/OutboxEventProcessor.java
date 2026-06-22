@@ -1,5 +1,7 @@
 package com.humanizar.acolhimento.infrastructure.messaging.outbound.outbox;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -92,33 +94,41 @@ public class OutboxEventProcessor {
 
             processingEvent.setStatus(OutboxStatus.PUBLISHED);
             processingEvent.setPublishedAt(LocalDateTime.now());
-            processingEvent.setLastError(null);
             processingEvent.setLockedBy(null);
             outboxEventPort.save(processingEvent);
 
-        } catch (Exception ex) {
+        } catch (Exception exception) {
             int newAttemptCount = Objects.requireNonNullElse(processingEvent.getAttemptCount(), 0) + 1;
             int maxAttempts = Objects.requireNonNullElse(
                     processingEvent.getMaxAttempts(), retryPolicy.getDefaultMaxAttempts());
 
             processingEvent.setAttemptCount(newAttemptCount);
-            processingEvent.setLastError(ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            processingEvent.setLastError(formatLastError(exception));
             processingEvent.setLockedBy(null);
 
             if (retryPolicy.isExhausted(newAttemptCount, maxAttempts)) {
                 processingEvent.setStatus(OutboxStatus.DEAD);
                 log.error("Evento movido para DEAD apos {} tentativas. eventId={}",
-                        newAttemptCount, processingEvent.getEventId(), ex);
+                        newAttemptCount, processingEvent.getEventId(), exception);
             } else {
                 processingEvent.setStatus(OutboxStatus.FAILED);
                 processingEvent.setNextRetryAt(retryPolicy.nextRetryAt(newAttemptCount));
                 log.warn("Falha ao publicar evento. attempt={}/{}, nextRetry={}, eventId={}",
                         newAttemptCount, maxAttempts, processingEvent.getNextRetryAt(),
-                        processingEvent.getEventId(), ex);
+                        processingEvent.getEventId(), exception);
             }
 
             outboxEventPort.save(processingEvent);
         }
+    }
+
+    private String formatLastError(Throwable throwable) {
+        StringWriter errorTrace = new StringWriter();
+        try (PrintWriter writer = new PrintWriter(errorTrace)) {
+            writer.println("occurredAt=" + LocalDateTime.now());
+            throwable.printStackTrace(writer);
+        }
+        return errorTrace.toString();
     }
 
     private void createMissingPendingTargets(UUID eventId, String routingKey) {

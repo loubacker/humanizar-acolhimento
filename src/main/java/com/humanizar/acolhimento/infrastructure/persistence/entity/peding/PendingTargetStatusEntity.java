@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 import com.humanizar.acolhimento.domain.model.enums.Status;
 
 import jakarta.persistence.Column;
@@ -21,7 +23,8 @@ import jakarta.persistence.UniqueConstraint;
 }, indexes = {
         @Index(name = "idx_target_status", columnList = "target_service,status"),
         @Index(name = "idx_event_status", columnList = "event_id,status"),
-        @Index(name = "idx_target_status_recall", columnList = "status,next_recall_at")
+        @Index(name = "idx_target_status_recall", columnList = "status,next_recall_at"),
+        @Index(name = "idx_target_status_purge", columnList = "status,created_at")
 })
 public class PendingTargetStatusEntity {
 
@@ -47,6 +50,10 @@ public class PendingTargetStatusEntity {
 
     @Column(name = "next_recall_at")
     private LocalDateTime nextRecallAt;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public PendingTargetStatusEntity() {
     }
@@ -112,6 +119,14 @@ public class PendingTargetStatusEntity {
 
     public void setNextRecallAt(LocalDateTime nextRecallAt) {
         this.nextRecallAt = nextRecallAt;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 
     @Override

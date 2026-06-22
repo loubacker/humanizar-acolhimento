@@ -8,6 +8,8 @@ import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
@@ -37,10 +39,16 @@ public class RabbitOutboxPublisher {
                         : null)
                 .build();
 
+        CorrelationData correlationData = new CorrelationData(correlationIdFor(event));
         boolean confirmed = Boolean.TRUE.equals(rabbitTemplate.invoke(operations -> {
-            operations.send(event.getExchangeName(), event.getRoutingKey(), message);
+            operations.send(event.getExchangeName(), event.getRoutingKey(), message, correlationData);
             return operations.waitForConfirms(CONFIRM_TIMEOUT_MS);
         }));
+
+        ReturnedMessage returned = correlationData.getReturned();
+        if (returned != null) {
+            throw unroutableException(event, returned);
+        }
 
         if (!confirmed) {
             throw new AmqpException("Broker NACK para eventId=" + event.getEventId());
@@ -48,5 +56,23 @@ public class RabbitOutboxPublisher {
 
         log.info("Evento publicado e confirmado pelo broker. eventId={}, exchange={}, routingKey={}",
                 event.getEventId(), event.getExchangeName(), event.getRoutingKey());
+    }
+
+    private String correlationIdFor(OutboxEvent event) {
+        if (event.getEventId() != null) {
+            return event.getEventId().toString();
+        }
+        if (event.getCorrelationId() != null) {
+            return event.getCorrelationId().toString();
+        }
+        return "missing-correlation";
+    }
+
+    private AmqpException unroutableException(OutboxEvent event, ReturnedMessage returned) {
+        return new AmqpException("Mensagem RabbitMQ nao roteavel. eventId=" + event.getEventId()
+                + ", exchange=" + returned.getExchange()
+                + ", routingKey=" + returned.getRoutingKey()
+                + ", replyCode=" + returned.getReplyCode()
+                + ", replyText=" + returned.getReplyText());
     }
 }

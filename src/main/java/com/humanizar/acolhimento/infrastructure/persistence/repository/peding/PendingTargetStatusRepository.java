@@ -32,4 +32,6 @@ public interface PendingTargetStatusRepository extends JpaRepository<PendingTarg
             Status status, LocalDateTime now, Pageable pageable);
 
     void deleteByEventId(UUID eventId);
+
+    void deleteByStatusInAndCreatedAtBefore(List<Status> status, LocalDateTime cutoff);
 }
