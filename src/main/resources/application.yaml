@@ -15,7 +15,12 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: ${AUTH_SERVER_URL}/oauth2/jwks
+          jwk-set-uri: ${KEYCLOAK_ISSUER}
+          issuer-uri: ${JWT_ISSUER}
+          audiences:
+            - ${JWT_AUDIENCE}
+          jws-algorithms:
+            - RS256
 
   # Configurações do RabbitMQ
   rabbitmq:
@@ -59,6 +64,7 @@ spring:
     properties:
       hibernate:
         "[format_sql]": false
+        dialect: com.humanizar.acolhimento.infrastructure.persistence.dialect.NoEnumCheckPostgreSQLDialect
     generate-ddl: true
     open-in-view: false
 

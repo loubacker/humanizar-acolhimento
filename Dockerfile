@@ -18,8 +18,12 @@ RUN ./mvnw -Pnative -DskipTests dependency:go-offline
 COPY src ./src
 
 # Compila a Aplicação para um Binário Nativo
-ARG AUTH_SERVER_URL
-RUN AUTH_SERVER_URL="${AUTH_SERVER_URL}" \
+ARG KEYCLOAK_ISSUER
+ARG JWT_ISSUER
+ARG JWT_AUDIENCE
+RUN KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER}" \
+    JWT_ISSUER="${JWT_ISSUER}" \
+    JWT_AUDIENCE="${JWT_AUDIENCE}" \
     ./mvnw -Pnative -DskipTests native:compile
 
 # -- Stage Runtime (Debian Slim) --
