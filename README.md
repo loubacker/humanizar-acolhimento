@@ -1,216 +1,238 @@
 <div align="center">
   <h1>Humanizar - Acolhimento (Microservice)</h1>
-  <p>API interna protegida para o fluxo de acolhimento do paciente no ecossistema Humanizar.</p>
+  <p>Gestão de acolhimento, anamnese técnica, alocação de equipe técnica por núcleo (staff) e vínculo de avaliações do paciente em Rust, com API interna protegida, PostgreSQL assíncrono e mensageria RabbitMQ.</p>
 
-  <img alt="Java" src="https://img.shields.io/badge/Java-25-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" />
-  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring_Boot-4.0.5-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white" />
-  <img alt="GraalVM" src="https://img.shields.io/badge/GraalVM_Native-25-E76F00?style=for-the-badge&logo=oracle&logoColor=white" />
-  <img alt="RabbitMQ" src="https://img.shields.io/badge/RabbitMQ-%23FF6600.svg?style=for-the-badge&logo=rabbitmq&logoColor=white" />
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.99-000000?style=for-the-badge&logo=rust&logoColor=white" />
+  <img alt="Axum" src="https://img.shields.io/badge/Axum-0.8-7B1FA2?style=for-the-badge&logo=rust&logoColor=white" />
+  <img alt="Tokio" src="https://img.shields.io/badge/Tokio-1.53-2C5BB4?style=for-the-badge&logo=rust&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img alt="RabbitMQ" src="https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+  <img alt="Keycloak" src="https://img.shields.io/badge/Keycloak-4D4D4D?style=for-the-badge&logo=keycloak&logoColor=white" />
 </div>
 
 <br/>
 
-Serviço orientado a EDA, com API HTTP interna protegida. Processa comandos de acolhimento, persiste estado local, publica comandos via outbox transacional e finaliza pendências por meio de callbacks do `humanizar-nucleo-relacionamento` e `humanizar-programa-atendimento`.
+O `humanizar-acolhimento` é o serviço central do ecossistema Humanizar responsável pelo ciclo de acolhimento, registro e acompanhamento do paciente. Migrado integralmente de Java para Rust (executando na porta `9099`), ele absorveu todas as responsabilidades que pertenciam ao extinto serviço `humanizar-nucleo-relacionamento`, unificando a gestão de núcleos e equipe técnica do paciente.
+
+O serviço opera com runtime assíncrono Axum e Tokio, persistência PostgreSQL com pool BB8 e composição explícita baseada em Arquitetura Hexagonal. Os eventos de alocação de equipe técnica comunicam-se diretamente com o serviço `humanizar-notification` através de mensageria RabbitMQ confiável com Transactional Outbox e garantia de entrega.
+
+## Responsabilidades
+
+- Registro, consulta, atualização e exclusão do acolhimento do paciente;
+- Gestão do relatório técnico e anamnese estruturada por núcleo (`nucleo_patient`);
+- Alocação e manutenção da equipe técnica por núcleo (`nucleo_patient_staff`), identificando o colaborador exclusivamente pelo campo declarativo `staff_user_id` e seu papel (`role`);
+- Vinculação, acompanhamento e desassociação de avaliações clínicas e questionários (`acolhimento_avaliacao`) integrados com o `humanizar-avaliacao-paciente`;
+- Publicação de eventos transacionais de equipe (`staff.vinculado` e `staff.desvinculado`) direcionados à `humanizar-notification`;
+- Atendimento assíncrono a comandos de consulta de acolhimento via RabbitMQ com garantia de deduplicação e idempotência;
+- Rastreabilidade ponta a ponta através do cabeçalho `X-Correlation-ID`.
 
 ## Arquitetura e Padrões
 
-- Arquitetura Hexagonal (`application`, `domain`, `infrastructure`).
-- Envelope inbound obrigatório para operações mutáveis (`InboundEnvelopeDTO<T>`).
-- Outbox transacional para publicação confiável de comandos RabbitMQ.
-- Controle de consistência eventual com `pending_acolhimento` e `pending_target_status`.
-- Callback inbound com idempotência por `processed_event`.
-- Reconciliação ativa de pendências por worker de recall (re-emite comandos não confirmados).
-- Anamnese local por núcleo (CRUD próprio), auditada via outbox sem entrega downstream.
-- ACK/NACK manual do RabbitMQ com política explícita por tipo de erro.
-- Execução otimizada com Virtual Threads e opção de runtime em binário nativo (GraalVM Native Image).
+O projeto adota rigorosamente as diretrizes da Arquitetura Hexagonal canônica e da skill `gloubacker-coder-style`:
 
-## Interfaces internas protegidas (REST)
+- **Camadas estritas**: `domain`, `application` e `infrastructure`, com dependências sempre apontando para o domínio;
+- **Centralização de módulos**: todos os módulos registrados explicitamente em `src/lib.rs`, **sem nenhum arquivo `mod.rs`**;
+- **Portas e Adaptadores**: portas assíncronas `Send + Sync` injetadas como `Arc<dyn Port>`;
+- **Isolamento de DTOs**: DTOs separados para HTTP e Mensageria com mappers manuais campo a campo e métodos construtores/getters privados;
+- **Persistência explícita**: repositórios responsáveis por SQL parametrizado nativo em caixa alta (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `FROM`, `WHERE`);
+- **Pool de Conexões**: PostgreSQL assíncrono com BB8 e validação de conectividade no checkout;
+- **Tratamento de Erros**: enum `ReasonCode` estável, exceções tipadas de domínio e handlers padronizados na infraestrutura;
+- **Transactional Outbox & Idempotência**: schema canônico de 21 campos em `outbox_events` e 16 campos em `processed_events`, com workers de relay e retenção supervisionados;
+- **Código Seguro**: `#![forbid(unsafe_code)]` em todo o código da aplicação.
 
-Base path: `/api/v1/acolhimento`
+## Regras de Domínio
 
-- `POST /register`
-    - Cria acolhimento e gera o comando outbound `cmd.acolhimento.created.v1`.
-    - Body obrigatório: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
-- `PUT /update/{patientId}`
-    - Atualiza acolhimento e gera o comando outbound `cmd.acolhimento.updated.v1`.
-    - Body obrigatório: `InboundEnvelopeDTO<InboundAcolhimentoDTO>`.
-    - Regra obrigatória: `path.patientId == payload.patientId`.
-- `DELETE /delete/{patientId}`
-    - Remove o acolhimento via remoção ordenada: `cmd.acolhimento.deleted.v2` (núcleo) e, após o callback, `cmd.acolhimento.deleted.v1` (programa).
-    - Body obrigatório: `InboundEnvelopeDTO<AcolhimentoDeleteDTO>`.
-    - Regra obrigatória: `path.patientId == payload.patientId`.
-- `GET /{patientId}`
-    - Retorna os núcleos do paciente com responsáveis e anamnese embutida (0..1 por núcleo).
-    - Retry automático em falhas transientes de banco (`@Retry`, max 2, timeout 30s).
+### Acolhimento
+- Vínculo exclusivo 1:1 com o paciente (`patient_id`), registrando data da anamnese, horário e observações gerais.
+- Atualizações preservam a identidade original e a rastreabilidade do registro.
 
-### Anamnese (CRUD local por núcleo)
+### Núcleo do Paciente
+- Um paciente pode ser acolhido em múltiplos núcleos de atendimento (`nucleo_patient`).
+- Cada núcleo armazena sua anamnese técnica estruturada em formato JSONB (`anamnese`).
+- Vínculos entre paciente e núcleos são únicos (`uk_nucleo_patient_patient_nucleo`).
 
-Base path: `/api/v1/acolhimento/anamnese`
+### Equipe Técnica do Núcleo (Staff)
+- Os colaboradores alocados ao paciente em cada núcleo são registrados em `nucleo_patient_staff`.
+- O identificador do colaborador é estritamente **`staff_user_id`** (UUID), acompanhado de seu papel funcional (`role`).
+- A nomenclatura legada `responsavel_id` foi completamente eliminada, sem suporte a aliases.
+- A criação ou remoção de membros na equipe gera eventos outbox transacionais para notificação imediata.
 
-- `POST /{patientId}/{nucleoId}` — registra a anamnese do núcleo.
-- `PUT /{patientId}/{nucleoId}` — atualiza a anamnese.
-- `DELETE /{patientId}/{nucleoId}` — remove a anamnese.
-- `GET /{patientId}/{nucleoId}` — retorna a anamnese do núcleo.
+### Avaliações Vinculadas
+- As avaliações clínicas criadas em `humanizar-avaliacao-paciente` podem ser vinculadas ao acolhimento através de `acolhimento_avaliacao`.
+- Armazena `patient_id`, `avaliacao_paciente_id`, `titulo_avaliacao`, `modalidade` e `status`.
+- Permite listagem unificada, registro de novos vínculos e exclusão/desassociação.
 
-Mutações exigem `HttpEnvelopeDTO<AnamneseDTO>`. A anamnese é local (não trafega downstream) e apenas auditada (outbox `AUDIT`).
+## API HTTP
 
-## 🔄 Comunicação Assíncrona (RabbitMQ)
+Base path: `/api/v1/acolhimento`. Porta padrão: `9099`.
 
-### Outbound
+### Verificação de Saúde
 
-**Exchange `humanizar.acolhimento.command`**
-- `cmd.acolhimento.created.v1`
-- `cmd.acolhimento.updated.v1`
-- `cmd.acolhimento.deleted.v2` (núcleo)
-- `cmd.acolhimento.deleted.v1` (programa)
+| Método | Rota | Autenticação | Descrição |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Pública | Retorna `200 {"status":"UP"}` se o PostgreSQL e o RabbitMQ responderem no prazo. Retorna `503` em caso de indisponibilidade. |
 
-Contrato publicado: `OutboundEnvelopeDTO<T>` (metadados EDA + payload tipado). DELETE é uma remoção ordenada: `deleted.v2` ao núcleo e, após o callback, `deleted.v1` ao programa.
+### Consultas (Exigem Bearer JWT)
 
-### Inbound — Callbacks do Núcleo de Relacionamento
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/acolhimento/paciente/{patientId}` | Retorna o acolhimento completo do paciente com núcleos e staff |
+| `GET` | `/api/v1/acolhimento/paciente/status/{patientId}` | Retorna o status resumido de acolhimento do paciente |
+| `GET` | `/api/v1/acolhimento/anamnese/paciente/{patientId}` | Retorna a anamnese estruturada dos núcleos do paciente |
+| `GET` | `/api/v1/acolhimento/avaliacoes/{patientId}` | Lista todas as avaliações clínicas vinculadas ao paciente |
 
-**Exchange `humanizar.acolhimento.event`**
-- `ev.acolhimento.nucleo-relacionamento.processed.v1`
-- `ev.acolhimento.nucleo-relacionamento.rejected.v1`
+### Comandos e Mutações (Exigem Bearer JWT + Role `ADMINISTRADOR`)
 
-Fila principal:
-- `callback.acolhimento.nucleo-relacionamento`
+| Método | Rota | Código HTTP | Descrição |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/acolhimento/register` | `201 Created` | Cria o registro de acolhimento do paciente com núcleos e staff |
+| `PUT` | `/api/v1/acolhimento/update/{id}` | `200 OK` | Atualiza o acolhimento, núcleos e equipe técnica do paciente |
+| `DELETE` | `/api/v1/acolhimento/delete/{patientId}` | `200 OK` | Remove o registro de acolhimento e desassocia núcleos do paciente |
+| `POST` | `/api/v1/acolhimento/anamnese/register` | `201 Created` | Registra a anamnese técnica do núcleo do paciente |
+| `PUT` | `/api/v1/acolhimento/anamnese/update/{patientId}` | `200 OK` | Atualiza a anamnese técnica do paciente |
+| `POST` | `/api/v1/acolhimento/avaliacoes/register` | `201 Created` | Vincula uma avaliação existente ao acolhimento do paciente |
+| `DELETE` | `/api/v1/acolhimento/avaliacoes/{id}` | `200 OK` | Desvincula uma avaliação de acolhimento pelo ID |
 
-DLQ:
-- `callback.acolhimento.nucleo-relacionamento.dlq`
+### Padrão de Respostas HTTP
 
-### Inbound — Callbacks do Programa de Atendimento
+Respostas bem-sucedidas utilizam o envelope unificado `SuccessResponseDto`:
 
-**Exchange `humanizar.acolhimento.event`**
-- `ev.acolhimento.programa.processed.v1`
-- `ev.acolhimento.programa.rejected.v1`
+```json
+{
+  "code": "ACOLHIMENTO_REGISTERED",
+  "success": true,
+  "correlationId": "4a7f9c2e-8d3b-41f2-9856-2e1189c4501a",
+  "message": "Registro de acolhimento criado com sucesso.",
+  "data": { ... },
+  "timestamp": "2026-10-27T14:30:00Z"
+}
+```
 
-Fila principal:
-- `callback.acolhimento.programa`
+Respostas de erro utilizam o envelope padronizado `ErrorResponseDto`:
 
-DLQ:
-- `callback.acolhimento.programa.dlq`
+```json
+{
+  "timestamp": "2026-10-27T14:30:00Z",
+  "status": 404,
+  "error": "Not Found",
+  "reasonCode": "ACOLHIMENTO_NOT_FOUND",
+  "message": "Acolhimento nao encontrado",
+  "path": "/api/v1/acolhimento/paciente/...",
+  "correlationId": "4a7f9c2e-8d3b-41f2-9856-2e1189c4501a"
+}
+```
 
-Contrato consumido (ambos): `CallbackDTO`.
+### ReasonCodes Estáveis
 
-## ⛓️‍💥 Resiliência e Tolerância a Falhas
-
-### ACK/NACK manual
-
-`rabbitListenerContainerFactory` roda com `AcknowledgeMode.MANUAL` (configuração Java).
-
-Política no callback inbound:
-- `ack`: sucesso e evento duplicado.
-- `nackRetry` (`requeue=true`): erro retentável.
-- `nackDeadLetter` (`requeue=false`): parse inválido e erro não retentável.
-
-Implementação central: `RabbitAcknowledgementConfig`.
-
-### Retry transiente (endpoint GET)
-
-`@Retry` via `ResilientMethodsConfig` (Spring Framework 7 `@Retryable`).
-
-- Max retries: 2, timeout: 30s.
-- Predicate: `TransientDataAccessException`, `RecoverableDataAccessException`, `CannotCreateTransactionException`, `QueryTimeoutException`.
-
-### Outbox states
-
-- `NEW`
-- `LOCKED`
-- `PUBLISHED`
-- `FAILED`
-- `DEAD`
-- `AUDIT` (auditoria local da anamnese; nunca publicado)
-
-Com retentativa por `OutboxRetryPolicy` e controle de ownership/fencing por `instanceId`.
-
-## 🛠️ Workers em Background
-
-### OutboxRelayWorker (5s)
-
-- Faz claim de eventos em `NEW`, `FAILED` e `LOCKED`.
-- Aplica lock ownership por `instanceId` (fencing).
-- Publica de forma assíncrona com controle de paralelismo.
-
-### OutboxEventProcessor
-
-Transições de status:
-- sucesso: `LOCKED -> PUBLISHED`
-- falha com retry: `LOCKED -> FAILED` (com `nextRetryAt`)
-- tentativas esgotadas: `LOCKED -> DEAD`
-
-### PendingRecallWorker (30s)
-
-- Re-dirige pendências presas (`pending_target_status` em `PENDING` e vencidas) resetando o outbox para `NEW`.
-- Backoff por `RecallPolicy`; escala para `ERROR` após o limite de tentativas.
-
-### RetentionWorker (1h)
-
-- Remove outbox antigo (`PUBLISHED` e `DEAD`) com mais de 48h.
-- Remove `processed_event` antigo com mais de 90 dias.
-- Remove pendências de saga concluídas (`pending_acolhimento`/`pending_target_status` terminais) com mais de 90 dias.
+| Status | Exemplos de ReasonCode |
+| --- | --- |
+| `400` | `PAYLOAD_REQUIRED`, `REQUEST_BODY_INVALID`, `REQUEST_PARAMETER_MISSING`, `REQUEST_PARAMETER_INVALID`, `VALIDATION_ERROR`, `PATIENT_ID_REQUIRED`, `NUCLEO_PATIENT_EMPTY`, `NUCLEO_STAFF_EMPTY`, `STAFF_USER_ID_REQUIRED`, `ROLE_REQUIRED`, `AVALIACAO_PACIENTE_ID_REQUIRED`, `TITULO_AVALIACAO_REQUIRED` |
+| `401` | `AUTHENTICATION_REQUIRED` |
+| `403` | `AUTHORIZATION_DENIED` |
+| `404` | `ACOLHIMENTO_NOT_FOUND`, `NUCLEO_PATIENT_NOT_FOUND`, `ACOLHIMENTO_AVALIACAO_NOT_FOUND`, `ROUTE_NOT_FOUND` |
+| `405` | `METHOD_NOT_ALLOWED` |
+| `409` | `ACOLHIMENTO_ALREADY_EXISTS`, `ACOLHIMENTO_AVALIACAO_ALREADY_EXISTS`, `DUPLICATE_EVENT` |
+| `413` | `PAYLOAD_TOO_LARGE` |
+| `500` | `DATABASE_ACCESS_FAILED`, `UNEXPECTED_ERROR` |
+| `502` | `INTEGRATION_FAILURE` |
+| `503` | `PERSISTENCE_FAILURE`, `MESSAGING_UNAVAILABLE` |
+| `504` | `REQUEST_TIMEOUT` |
 
 ## 🔐 Segurança
 
-- API interna protegida por OAuth2 Resource Server JWT.
-- Assinatura RS256 validada pelo JWKS completo de `KEYCLOAK_ISSUER`.
-- `JWT_ISSUER` e `JWT_AUDIENCE` são obrigatórios; roles vêm de `realm_access.roles`.
-- Sem exposição de endpoint público para uso externo.
+- **Autenticação Stateless**: Bearer JWT com validação criptográfica obrigatória `RS256`;
+- **Validação de Claims**: verificação rigorosa de `kid`, assinatura digital, `exp`, `nbf`, `iss`, `aud` e `sub`;
+- **Controle de Acesso**: autorização baseada exclusivamente em `realm_access.roles`, exigindo a role `ADMINISTRADOR` para todas as mutações (`POST`, `PUT`, `DELETE`);
+- **Carregamento de Chaves (JWKS)**: chaves públicas carregadas diretamente da URL completa em `KEYCLOAK_ISSUER`, com cache em memória (TTL padrão 300s) e atualização assíncrona;
+- **Proteção de Dados**: tokens, credenciais e payloads brutos de exceções são omitidos dos logs.
 
-## Estrutura do projeto
+## ⛓️‍💥 Resiliência e Observabilidade
+
+- **Timeouts**: timeout de requisição HTTP configurado para 30 segundos; timeouts do pool PostgreSQL ajustados para `statement_timeout=25000` e `lock_timeout=10000` ms;
+- **Limitação de Carga**: limite de payload HTTP fixado em 2 MiB via `DefaultBodyLimit`;
+- **Rastreabilidade**: propagação e auditoria contínua do header `X-Correlation-ID` em logs, respostas HTTP, mensagens e outbox;
+- **Supervisão de Tarefas**: encerramento gracioso (graceful shutdown) via `SIGINT` / `SIGTERM` aguardando a finalização dos lotes de mensageria em andamento.
+
+## Mensageria RabbitMQ
+
+### Topologia de Exchanges
 
 ```text
-src/main/java/com/humanizar/acolhimento/
-|-- application/
-|   |-- catalog/                    # Exchange/Queue/RoutingKey/Target/ProducerCatalog
-|   |-- http/                       # DTOs, mappers e validacao de envelope/payload
-|   |-- messaging/                  # inbound (callbacks) e outbound (comandos/audit)
-|   |-- service/                    # orquestracao create/update/delete/retrieve/callback/anamnese
-|   `-- usecase/                    # regras de aplicacao por contexto
-|-- domain/                         # modelos, enums, ports, exceptions
-`-- infrastructure/                 # adapters, controllers, rabbit, outbox, persistence
+humanizar.acolhimento.command (direct)
+humanizar.acolhimento.event   (topic)
+humanizar.acolhimento.dlx     (fanout)
 ```
+
+### Comandos Consumidos
+
+```text
+cmd.acolhimento.patient.retrieve.v1
+```
+
+A fila associada `humanizar.acolhimento.patient.retrieve` é configurada como Quorum Queue com ACK manual e envio automático para DLQ (`humanizar.acolhimento.patient.retrieve.dlq`) após limite de tentativas.
+
+### Callbacks Publicados
+
+```text
+ev.acolhimento.patient.retrieved.v1
+ev.acolhimento.patient.failed.v1
+```
+
+### Eventos de Notificação de Equipe (Consumidos por `humanizar-notification`)
+
+```text
+ev.acolhimento.staff.vinculado.v1
+ev.acolhimento.staff.desvinculado.v1
+```
+
+O envelope do evento transporta `staffUserId`, `patientId`, `nucleoId` e `role`, acionando diretamente o envio de notificações institucionais para o colaborador vinculado ou desvinculado.
+
+### Transactional Outbox e Retenção
+
+1. Mutações de acolhimento gravam o estado de domínio e os eventos de outbox atomicamente na mesma transação PostgreSQL;
+2. O worker de relay seleciona lotes com `FOR UPDATE SKIP LOCKED`, garantindo exclusividade de execução com `locked_by` e `next_retry_at`;
+3. A publicação no RabbitMQ é executada com mandatory e publisher confirms habilitados;
+4. Falhas transitórias aplicam backoff exponencial até o esgotamento de tentativas (`DEAD`);
+5. O worker de retenção limpa periodicamente registros `PUBLISHED` e `DEAD` com mais de 48 horas e recibos processados com mais de 90 dias.
+
+## Persistência PostgreSQL
+
+O script inicial transacional está versionado em:
+
+| Arquivo | Descrição |
+| --- | --- |
+| [`migrations/0001_initial_schema.sql`](migrations/0001_initial_schema.sql) | Criação de tabelas, PKs, FKs, constraints e índices para o banco limpo |
+
+## Como Executar Localmente
 
 ### Pré-requisitos
-- JDK 25
-- Maven 3.9+
-- PostgreSQL
-- RabbitMQ
 
-### Variáveis de Ambiente (`.env`)
+- Rust `1.99.0` (edition 2024), fixado em `rust-toolchain.toml`, com Cargo, Clippy e rustfmt;
+- PostgreSQL 15+ com banco `humanizar_acolhimento` e script `0001_initial_schema.sql` executado;
+- RabbitMQ com permissões no vhost configurado;
+- Keycloak com realm ativo e emissão de tokens.
 
-```env
-DB_URL=jdbc:postgresql://localhost:5432/db
-DB_USERNAME=postgres
-DB_PASSWORD=secret
-RABBITMQ_URL=amqp://admin:admin@localhost:5672
-KEYCLOAK_ISSUER=<jwks-url-completa>
-JWT_ISSUER=<issuer-do-realm>
-JWT_AUDIENCE=<audience-obrigatoria>
-```
-
-### Execução local (JVM)
+### Inicialização
 
 ```bash
-./mvnw clean install -DskipTests
-./mvnw spring-boot:run
+cargo run --locked
 ```
 
-Porta padrao: `9099`  
-Health check: `http://localhost:9099/actuator/health`
+### Quality Gate (CI / Code Quality)
 
-## 🐳 Docker Native (GraalVM)
-
-O Dockerfile do módulo usa build multi-stage com GraalVM Native Image:
-
-1. Build stage (`ghcr.io/graalvm/native-image-community:25`) compila com:
-   - `./mvnw -Pnative -DskipTests native:compile`
-2. Runtime stage (`debian:bookworm-slim`) executa binario nativo:
-   - `/app/app-binario`
-
-Exemplo:
+Para assegurar a conformidade contínua com os padrões de engenharia:
 
 ```bash
-docker build -t humanizar-acolhimento:native .
-docker run --rm -p 9099:9099 --env-file .env humanizar-acolhimento:native
+# Formatação
+cargo fmt --check
+
+# Compilação e checagem de tipos
+cargo check --all-targets --locked
+
+# Linter estrito com zero tolerância a warnings
+cargo clippy --all-targets --locked -- -D warnings
+
+# Suíte de testes unitários
+cargo test --all-targets --locked
 ```
