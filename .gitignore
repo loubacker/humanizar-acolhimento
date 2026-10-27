@@ -30,9 +30,7 @@ build/
 !**/src/test/**/build/
 
 ### Pastas ###
-.vscode/
 .idea/
-.docs/
 
 ### Env ###
 .env
