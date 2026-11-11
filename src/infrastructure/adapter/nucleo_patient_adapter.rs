@@ -4,9 +4,13 @@ use uuid::Uuid;
 
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::messaging::OutboxEvent;
-use crate::domain::model::{NucleoPatient, NucleoPatientStaff};
+use crate::domain::model::{
+    Acolhimento, AnamneseOperation, NucleoPatient, NucleoPatientStaff, OperationIdentity,
+};
 use crate::domain::port::NucleoPatientPort;
-use crate::infrastructure::persistence::entity::{NucleoPatientEntity, NucleoPatientStaffEntity};
+use crate::infrastructure::persistence::entity::{
+    AcolhimentoEntity, NucleoPatientEntity, NucleoPatientStaffEntity,
+};
 use crate::infrastructure::persistence::repository::NucleoPatientRepository;
 
 pub(crate) struct NucleoPatientAdapter {
@@ -58,8 +62,11 @@ impl NucleoPatientPort for NucleoPatientAdapter {
     async fn replace_patient_nucleos(
         &self,
         patient_id: Uuid,
+        expected_nucleos: &[NucleoPatient],
+        expected_staff: &[NucleoPatientStaff],
         entries: Vec<(NucleoPatient, Vec<NucleoPatientStaff>)>,
         outbox_events: Vec<OutboxEvent>,
+        operation: &OperationIdentity,
     ) -> Result<Vec<(NucleoPatient, Vec<NucleoPatientStaff>)>, AcolhimentoException> {
         let mapped_entries = entries
             .into_iter()
@@ -87,7 +94,14 @@ impl NucleoPatientPort for NucleoPatientAdapter {
 
         let saved = self
             .repository
-            .replace_patient_nucleos(patient_id, mapped_entries, outbox_events)
+            .replace_patient_nucleos(
+                patient_id,
+                expected_nucleos.iter().map(to_nucleo_entity).collect(),
+                expected_staff.iter().map(to_staff_entity).collect(),
+                mapped_entries,
+                outbox_events,
+                operation,
+            )
             .await?;
 
         Ok(saved
@@ -117,41 +131,91 @@ impl NucleoPatientPort for NucleoPatientAdapter {
             .collect())
     }
 
-    async fn update_anamnese_batch(
+    async fn save_anamnese(
         &self,
+        acolhimento: Acolhimento,
         updates: Vec<(Uuid, Option<Value>)>,
-    ) -> Result<Vec<NucleoPatient>, AcolhimentoException> {
-        let now = chrono::Local::now().naive_local();
-        let entity_updates = updates
-            .into_iter()
-            .map(|(id, val)| (id, val, now))
-            .collect();
-        let updated = self
+        operation: &OperationIdentity,
+    ) -> Result<Acolhimento, AcolhimentoException> {
+        let entity = AcolhimentoEntity {
+            id: acolhimento.id(),
+            patient_id: acolhimento.patient_id(),
+            data_anamnese: acolhimento.data_anamnese(),
+            hora_anamnese: acolhimento.hora_anamnese(),
+            observacoes: acolhimento.observacoes().map(ToOwned::to_owned),
+            created_at: acolhimento.created_at(),
+            updated_at: acolhimento.updated_at(),
+        };
+        let saved = self
             .repository
-            .update_anamnese_batch(entity_updates)
+            .save_anamnese(entity, updates, operation)
             .await?;
-        Ok(updated
-            .into_iter()
-            .map(|e| {
-                NucleoPatient::restore(
-                    e.id,
-                    e.patient_id,
-                    e.nucleo_id,
-                    e.anamnese,
-                    e.created_at,
-                    e.updated_at,
-                )
-            })
-            .collect())
+        Ok(Acolhimento::restore(
+            saved.id,
+            saved.patient_id,
+            saved.data_anamnese,
+            saved.hora_anamnese,
+            saved.observacoes,
+            saved.created_at,
+            saved.updated_at,
+        ))
     }
 
     async fn delete_by_patient_id(
         &self,
         patient_id: Uuid,
+        expected_nucleos: &[NucleoPatient],
+        expected_staff: &[NucleoPatientStaff],
         outbox_events: Vec<OutboxEvent>,
+        operation: &OperationIdentity,
     ) -> Result<(), AcolhimentoException> {
         self.repository
-            .delete_by_patient_id(patient_id, outbox_events)
+            .delete_by_patient_id(
+                patient_id,
+                expected_nucleos.iter().map(to_nucleo_entity).collect(),
+                expected_staff.iter().map(to_staff_entity).collect(),
+                outbox_events,
+                operation,
+            )
             .await
+    }
+
+    async fn change_nucleo_anamnese(
+        &self,
+        patient_id: Uuid,
+        nucleo_id: Uuid,
+        operation: AnamneseOperation,
+        anamnese: Option<Value>,
+        operation_identity: &OperationIdentity,
+    ) -> Result<(), AcolhimentoException> {
+        self.repository
+            .change_nucleo_anamnese(
+                patient_id,
+                nucleo_id,
+                operation,
+                anamnese,
+                operation_identity,
+            )
+            .await
+    }
+}
+
+fn to_nucleo_entity(nucleo: &NucleoPatient) -> NucleoPatientEntity {
+    NucleoPatientEntity {
+        id: nucleo.id(),
+        patient_id: nucleo.patient_id(),
+        nucleo_id: nucleo.nucleo_id(),
+        anamnese: nucleo.anamnese().cloned(),
+        created_at: nucleo.created_at(),
+        updated_at: nucleo.updated_at(),
+    }
+}
+
+fn to_staff_entity(staff: &NucleoPatientStaff) -> NucleoPatientStaffEntity {
+    NucleoPatientStaffEntity {
+        id: staff.id(),
+        nucleo_patient_id: staff.nucleo_patient_id(),
+        staff_user_id: staff.staff_user_id(),
+        role: staff.role().to_owned(),
     }
 }

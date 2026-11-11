@@ -1,5 +1,6 @@
 use uuid::Uuid;
 
+#[derive(PartialEq)]
 pub(crate) struct NucleoPatientStaffEntity {
     pub id: Uuid,
     pub nucleo_patient_id: Uuid,

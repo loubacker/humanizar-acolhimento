@@ -1,13 +1,17 @@
-use chrono::NaiveDateTime;
 use serde_json::Value;
+use std::collections::HashSet;
 use uuid::Uuid;
 
+use super::AcolhimentoOperationRepository;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::enums::ReasonCode;
 use crate::domain::model::messaging::OutboxEvent;
+use crate::domain::model::{AnamneseOperation, OperationIdentity};
 use crate::infrastructure::config::DatabaseConfig;
 use crate::infrastructure::handler::database_error;
-use crate::infrastructure::persistence::entity::{NucleoPatientEntity, NucleoPatientStaffEntity};
+use crate::infrastructure::persistence::entity::{
+    AcolhimentoEntity, NucleoPatientEntity, NucleoPatientStaffEntity,
+};
 use crate::infrastructure::persistence::mapper::MessagingEntityMapper;
 
 pub(crate) struct NucleoPatientRepository {
@@ -79,12 +83,18 @@ impl NucleoPatientRepository {
     pub async fn replace_patient_nucleos(
         &self,
         patient_id: Uuid,
+        expected_nucleos: Vec<NucleoPatientEntity>,
+        expected_staff: Vec<NucleoPatientStaffEntity>,
         entries: Vec<(NucleoPatientEntity, Vec<NucleoPatientStaffEntity>)>,
         outbox_events: Vec<OutboxEvent>,
+        operation: &OperationIdentity,
     ) -> Result<Vec<(NucleoPatientEntity, Vec<NucleoPatientStaffEntity>)>, AcolhimentoException>
     {
         let mut client = self.database.acquire().await?;
         let transaction = client.transaction().await.map_err(database_error)?;
+        AcolhimentoOperationRepository::lock(&transaction, operation).await?;
+        Self::lock_patient(&transaction, patient_id).await?;
+        Self::verify_snapshot(&transaction, patient_id, expected_nucleos, expected_staff).await?;
         transaction
             .execute(
                 r#"
@@ -157,52 +167,102 @@ impl NucleoPatientRepository {
             saved_entries.push((saved_np, saved_staff));
         }
         Self::insert_outbox_events(&transaction, outbox_events).await?;
+        AcolhimentoOperationRepository::complete(&transaction, operation).await?;
         transaction.commit().await.map_err(database_error)?;
         Ok(saved_entries)
     }
 
-    pub async fn update_anamnese_batch(
+    pub async fn save_anamnese(
         &self,
-        updates: Vec<(Uuid, Option<Value>, NaiveDateTime)>,
-    ) -> Result<Vec<NucleoPatientEntity>, AcolhimentoException> {
+        acolhimento: AcolhimentoEntity,
+        updates: Vec<(Uuid, Option<Value>)>,
+        operation: &OperationIdentity,
+    ) -> Result<AcolhimentoEntity, AcolhimentoException> {
+        let mut seen = HashSet::with_capacity(updates.len());
+        if updates.iter().any(|(id, _)| !seen.insert(*id)) {
+            return Err(AcolhimentoException::new(ReasonCode::ValidationError));
+        }
         let mut client = self.database.acquire().await?;
         let transaction = client.transaction().await.map_err(database_error)?;
-        let mut updated = Vec::with_capacity(updates.len());
-        for (id, anamnese, updated_at) in updates {
-            let row = transaction
-                .query_opt(
+        AcolhimentoOperationRepository::lock(&transaction, operation).await?;
+        Self::lock_patient(&transaction, acolhimento.patient_id).await?;
+        let nucleos = transaction
+            .query(
+                "SELECT id FROM nucleo_patient WHERE patient_id = $1 ORDER BY id FOR UPDATE",
+                &[&acolhimento.patient_id],
+            )
+            .await
+            .map_err(database_error)?;
+        if nucleos.is_empty() {
+            return Err(AcolhimentoException::new(ReasonCode::AcolhimentoNotFound));
+        }
+        for (id, anamnese) in updates {
+            let changed = transaction
+                .execute(
                     r#"
                     UPDATE nucleo_patient
                     SET
                         anamnese = $2,
                         updated_at = $3
-                    WHERE id = $1
-                    RETURNING
-                        id,
-                        patient_id,
-                        nucleo_id,
-                        anamnese,
-                        created_at,
-                        updated_at
+                    WHERE id = $1 AND patient_id = $4
                     "#,
-                    &[&id, &anamnese, &updated_at],
+                    &[
+                        &id,
+                        &anamnese,
+                        &acolhimento.updated_at,
+                        &acolhimento.patient_id,
+                    ],
                 )
                 .await
-                .map_err(database_error)?
-                .ok_or_else(|| AcolhimentoException::new(ReasonCode::NucleoPatientNotFound))?;
-            updated.push(NucleoPatientEntity::from_row(&row).map_err(database_error)?);
+                .map_err(database_error)?;
+            if changed != 1 {
+                return Err(AcolhimentoException::new(ReasonCode::NucleoPatientNotFound));
+            }
         }
+        let row = transaction
+            .query_one(
+                r#"
+                INSERT INTO acolhimento (
+                    id, patient_id, data_anamnese, hora_anamnese, observacoes, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (patient_id) DO UPDATE SET
+                    data_anamnese = EXCLUDED.data_anamnese,
+                    hora_anamnese = EXCLUDED.hora_anamnese,
+                    observacoes = EXCLUDED.observacoes,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id, patient_id, data_anamnese, hora_anamnese, observacoes, created_at, updated_at
+                "#,
+                &[
+                    &acolhimento.id,
+                    &acolhimento.patient_id,
+                    &acolhimento.data_anamnese,
+                    &acolhimento.hora_anamnese,
+                    &acolhimento.observacoes,
+                    &acolhimento.created_at,
+                    &acolhimento.updated_at,
+                ],
+            )
+            .await
+            .map_err(database_error)?;
+        let saved = AcolhimentoEntity::from_row(&row).map_err(database_error)?;
+        AcolhimentoOperationRepository::complete(&transaction, operation).await?;
         transaction.commit().await.map_err(database_error)?;
-        Ok(updated)
+        Ok(saved)
     }
 
     pub async fn delete_by_patient_id(
         &self,
         patient_id: Uuid,
+        expected_nucleos: Vec<NucleoPatientEntity>,
+        expected_staff: Vec<NucleoPatientStaffEntity>,
         outbox_events: Vec<OutboxEvent>,
+        operation: &OperationIdentity,
     ) -> Result<(), AcolhimentoException> {
         let mut client = self.database.acquire().await?;
         let transaction = client.transaction().await.map_err(database_error)?;
+        AcolhimentoOperationRepository::lock(&transaction, operation).await?;
+        Self::lock_patient(&transaction, patient_id).await?;
+        Self::verify_snapshot(&transaction, patient_id, expected_nucleos, expected_staff).await?;
         let affected = transaction
             .execute(
                 r#"
@@ -216,8 +276,108 @@ impl NucleoPatientRepository {
         if affected == 0 {
             return Err(AcolhimentoException::new(ReasonCode::AcolhimentoNotFound));
         }
+        transaction
+            .execute(
+                "DELETE FROM acolhimento WHERE patient_id = $1",
+                &[&patient_id],
+            )
+            .await
+            .map_err(database_error)?;
         Self::insert_outbox_events(&transaction, outbox_events).await?;
+        AcolhimentoOperationRepository::complete(&transaction, operation).await?;
         transaction.commit().await.map_err(database_error)
+    }
+
+    pub async fn change_nucleo_anamnese(
+        &self,
+        patient_id: Uuid,
+        nucleo_id: Uuid,
+        operation: AnamneseOperation,
+        anamnese: Option<Value>,
+        operation_identity: &OperationIdentity,
+    ) -> Result<(), AcolhimentoException> {
+        if matches!(operation, AnamneseOperation::Delete) != anamnese.is_none() {
+            return Err(AcolhimentoException::new(ReasonCode::ValidationError));
+        }
+        let mut client = self.database.acquire().await?;
+        let transaction = client.transaction().await.map_err(database_error)?;
+        AcolhimentoOperationRepository::lock(&transaction, operation_identity).await?;
+        Self::lock_patient(&transaction, patient_id).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT anamnese FROM nucleo_patient WHERE patient_id = $1 AND nucleo_id = $2 FOR UPDATE",
+                &[&patient_id, &nucleo_id],
+            )
+            .await
+            .map_err(database_error)?
+            .ok_or_else(|| AcolhimentoException::new(ReasonCode::NucleoPatientNotFound))?;
+        let existing: Option<Value> = row.try_get("anamnese").map_err(database_error)?;
+        match (operation, existing.is_some()) {
+            (AnamneseOperation::Create, true) => {
+                return Err(AcolhimentoException::new(ReasonCode::AnamneseAlreadyExists));
+            }
+            (AnamneseOperation::Update | AnamneseOperation::Delete, false) => {
+                return Err(AcolhimentoException::new(ReasonCode::AnamneseNotFound));
+            }
+            _ => {}
+        }
+        transaction
+            .execute(
+                "UPDATE nucleo_patient SET anamnese = $3, updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo' WHERE patient_id = $1 AND nucleo_id = $2",
+                &[&patient_id, &nucleo_id, &anamnese],
+            )
+            .await
+            .map_err(database_error)?;
+        AcolhimentoOperationRepository::complete(&transaction, operation_identity).await?;
+        transaction.commit().await.map_err(database_error)
+    }
+
+    pub(crate) async fn lock_patient(
+        transaction: &tokio_postgres::Transaction<'_>,
+        patient_id: Uuid,
+    ) -> Result<(), AcolhimentoException> {
+        transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+                &[&patient_id.to_string()],
+            )
+            .await
+            .map_err(database_error)?;
+        Ok(())
+    }
+
+    async fn verify_snapshot(
+        transaction: &tokio_postgres::Transaction<'_>,
+        patient_id: Uuid,
+        mut expected_nucleos: Vec<NucleoPatientEntity>,
+        mut expected_staff: Vec<NucleoPatientStaffEntity>,
+    ) -> Result<(), AcolhimentoException> {
+        let rows = transaction.query(
+            "SELECT id, patient_id, nucleo_id, anamnese, created_at, updated_at FROM nucleo_patient WHERE patient_id = $1 ORDER BY id FOR UPDATE",
+            &[&patient_id],
+        ).await.map_err(database_error)?;
+        let current_nucleos = rows
+            .iter()
+            .map(NucleoPatientEntity::from_row)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        let rows = transaction.query(
+            "SELECT staff.id, staff.nucleo_patient_id, staff.staff_user_id, staff.role FROM nucleo_patient_staff staff JOIN nucleo_patient np ON np.id = staff.nucleo_patient_id WHERE np.patient_id = $1 ORDER BY staff.id",
+            &[&patient_id],
+        ).await.map_err(database_error)?;
+        let current_staff = rows
+            .iter()
+            .map(NucleoPatientStaffEntity::from_row)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+        expected_nucleos.sort_by_key(|entity| entity.id);
+        expected_staff.sort_by_key(|entity| entity.id);
+        if current_nucleos != expected_nucleos || current_staff != expected_staff {
+            return Err(AcolhimentoException::new(
+                ReasonCode::AcolhimentoConcurrentChange,
+            ));
+        }
+        Ok(())
     }
 
     async fn insert_outbox_events(

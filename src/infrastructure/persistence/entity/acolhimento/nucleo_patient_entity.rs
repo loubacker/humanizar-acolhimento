@@ -2,6 +2,7 @@ use chrono::NaiveDateTime;
 use serde_json::Value;
 use uuid::Uuid;
 
+#[derive(PartialEq)]
 pub(crate) struct NucleoPatientEntity {
     pub id: Uuid,
     pub patient_id: Uuid,
