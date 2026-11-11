@@ -3,6 +3,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct AcolhimentoRetrieveCommand {
     pub event_id: Uuid,
+    pub event_hash: String,
     pub correlation_id: Uuid,
     pub patient_id: Uuid,
     pub callback_exchange: String,

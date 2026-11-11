@@ -6,6 +6,7 @@ use crate::application::validator::required;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::enums::ReasonCode;
 use crate::domain::model::messaging::AcolhimentoRetrieveCommand;
+use sha2::{Digest, Sha256};
 
 pub struct AcolhimentoCommandMapper;
 
@@ -39,7 +40,7 @@ impl AcolhimentoCommandMapper {
         Some(crate::domain::model::messaging::ProcessedEvent::new(
             crate::application::catalog::ConsumerCatalog::RETRIEVE_CONSUMER,
             envelope.event_id?,
-            None,
+            Some(hex::encode(Sha256::digest(body))),
             None,
             envelope.correlation_id?,
             routing_key,
@@ -109,6 +110,7 @@ impl AcolhimentoCommandMapper {
         }
         Ok(AcolhimentoRetrieveCommand {
             event_id,
+            event_hash: hex::encode(Sha256::digest(body)),
             correlation_id,
             patient_id,
             callback_exchange,
