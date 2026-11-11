@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::application::http::dto::{
@@ -25,14 +26,25 @@ impl AcolhimentoValidator {
             return Err(AcolhimentoException::new(ReasonCode::NucleoPatientEmpty));
         }
 
+        let mut seen_nucleos = HashSet::new();
         for n in nucleos {
-            required_uuid(n.nucleo_id, ReasonCode::RequestParameterInvalid)?;
+            let nucleo_id = required_uuid(n.nucleo_id, ReasonCode::RequestParameterInvalid)?;
+            if !seen_nucleos.insert(nucleo_id) {
+                return Err(AcolhimentoException::new(ReasonCode::DuplicateNucleo));
+            }
             if n.nucleo_patient_staff.is_empty() {
                 return Err(AcolhimentoException::new(ReasonCode::NucleoStaffEmpty));
             }
+            let mut seen_staff = HashSet::new();
             for s in &n.nucleo_patient_staff {
-                required_uuid(s.staff_user_id, ReasonCode::StaffUserIdRequired)?;
-                required(s.role.clone(), ReasonCode::RoleRequired)?;
+                let staff_id = required_uuid(s.staff_user_id, ReasonCode::StaffUserIdRequired)?;
+                if !seen_staff.insert(staff_id) {
+                    return Err(AcolhimentoException::new(ReasonCode::DuplicateStaff));
+                }
+                let role = required(s.role.clone(), ReasonCode::RoleRequired)?;
+                if role.chars().count() > 100 {
+                    return Err(AcolhimentoException::new(ReasonCode::RoleInvalid));
+                }
             }
         }
 
@@ -41,16 +53,12 @@ impl AcolhimentoValidator {
 
     pub fn validate_avaliacao_register(
         dto: &AcolhimentoAvaliacaoRegisterDto,
-    ) -> Result<(Uuid, Uuid, String), AcolhimentoException> {
+    ) -> Result<(Uuid, Uuid), AcolhimentoException> {
         let patient_id = required_uuid(dto.patient_id, ReasonCode::PatientIdRequired)?;
         let avaliacao_paciente_id = required_uuid(
             dto.avaliacao_paciente_id,
             ReasonCode::AvaliacaoPacienteIdRequired,
         )?;
-        let titulo = required(
-            dto.titulo_avaliacao.clone(),
-            ReasonCode::TituloAvaliacaoRequired,
-        )?;
-        Ok((patient_id, avaliacao_paciente_id, titulo))
+        Ok((patient_id, avaliacao_paciente_id))
     }
 }

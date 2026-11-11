@@ -19,5 +19,7 @@ pub(crate) fn required_uuid(
     value: Option<Uuid>,
     reason: ReasonCode,
 ) -> Result<Uuid, AcolhimentoException> {
-    value.ok_or_else(|| AcolhimentoException::new(reason))
+    value
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| AcolhimentoException::new(reason))
 }
