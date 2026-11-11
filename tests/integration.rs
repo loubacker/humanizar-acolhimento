@@ -1302,3 +1302,238 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     task.abort();
 }
 
+#[tokio::test]
+#[ignore = "exige PostgreSQL e vhost RabbitMQ descartáveis"]
+async fn rabbit_retains_dlq_until_quarantine_and_deduplicates_callbacks() {
+    use lapin::options::{BasicGetOptions, BasicPublishOptions, QueueDeclareOptions};
+    use lapin::types::FieldTable;
+    use lapin::{BasicProperties, Connection, ConnectionProperties};
+
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(QuarantineRetryLayer(attempts.clone())),
+    )
+    .unwrap();
+
+    let rabbit_url =
+        std::env::var("ACOLHIMENTO_TEST_RABBIT_URL").expect("RabbitMQ de teste ausente");
+    let parsed = url::Url::parse(&rabbit_url).unwrap();
+    assert_eq!(parsed.host_str(), Some("127.0.0.1"));
+    assert_eq!(parsed.path(), "/codex-acolhimento-test-1028");
+    let database = database().await;
+    let client = database.acquire().await.unwrap();
+    client
+        .batch_execute(
+            "CREATE TABLE test_quarantine_failure (payload BYTEA PRIMARY KEY); \
+         CREATE FUNCTION test_reject_quarantine() RETURNS trigger LANGUAGE plpgsql AS $$ \
+         BEGIN IF EXISTS (SELECT 1 FROM test_quarantine_failure WHERE payload = NEW.payload) \
+         THEN RAISE EXCEPTION 'synthetic quarantine failure'; END IF; RETURN NEW; END $$; \
+         CREATE TRIGGER test_quarantine_failure BEFORE INSERT ON dead_letter_quarantine \
+         FOR EACH ROW EXECUTE FUNCTION test_reject_quarantine();",
+        )
+        .await
+        .unwrap();
+    let patient: Uuid = client
+        .query_one(
+            "SELECT patient_id FROM nucleo_patient ORDER BY id LIMIT 1",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let mut payload = vec![0, 255, 71, 31];
+    payload.extend_from_slice(Uuid::new_v4().as_bytes());
+    client
+        .execute(
+            "INSERT INTO test_quarantine_failure (payload) VALUES ($1)",
+            &[&payload],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    let runtime = RabbitRuntime::start(
+        database.clone(),
+        RabbitSettings::new(rabbit_url.clone()).unwrap(),
+    )
+    .await
+    .unwrap();
+    let connection = Connection::connect(&rabbit_url, ConnectionProperties::default())
+        .await
+        .unwrap();
+    let channel = connection.create_channel().await.unwrap();
+    channel
+        .basic_publish(
+            "".into(),
+            QueueCatalog::PATIENT_RETRIEVE_DLQ.into(),
+            BasicPublishOptions::default(),
+            &payload,
+            BasicProperties::default(),
+        )
+        .await
+        .unwrap()
+        .await
+        .unwrap();
+    let mut in_flight = false;
+    for _ in 0..100 {
+        let queue = channel
+            .queue_declare(
+                QueueCatalog::PATIENT_RETRIEVE_DLQ.into(),
+                QueueDeclareOptions {
+                    passive: true,
+                    ..Default::default()
+                },
+                FieldTable::default(),
+            )
+            .await
+            .unwrap();
+        if queue.message_count() == 0 {
+            in_flight = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(in_flight, "Entrega nao foi recebida pelo consumidor");
+    for _ in 0..100 {
+        if attempts.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        attempts.load(std::sync::atomic::Ordering::SeqCst) > 0,
+        "A falha de persistencia nao foi observada"
+    );
+    let client = database.acquire().await.unwrap();
+    let count: i64 = client
+        .query_one(
+            "SELECT count(*) FROM dead_letter_quarantine WHERE payload = $1",
+            &[&payload],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 0);
+    client
+        .execute(
+            "DELETE FROM test_quarantine_failure WHERE payload = $1",
+            &[&payload],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    let mut persisted = false;
+    for _ in 0..150 {
+        let client = database.acquire().await.unwrap();
+        let row = client
+            .query_opt(
+                "SELECT payload, properties FROM dead_letter_quarantine WHERE payload = $1",
+                &[&payload],
+            )
+            .await
+            .unwrap();
+        if let Some(row) = row {
+            assert_eq!(row.get::<_, Vec<u8>>("payload"), payload);
+            assert!(!row.get::<_, Vec<u8>>("properties").is_empty());
+            persisted = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(persisted, "Entrega nao persistida apos recuperar o banco");
+
+    let event_id = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let mut command = json!({
+        "eventId":event_id, "correlationId":correlation, "producerService":"synthetic-test",
+        "exchangeName":"humanizar.acolhimento.command", "routingKey":"cmd.acolhimento.patient.retrieve.v1",
+        "aggregateType":"Patient", "aggregateId":patient, "eventVersion":1,
+        "occurredAt":"2026-10-28T10:00:00",
+        "payload":{"patientId":patient, "callbackExchange":"humanizar.acolhimento.event"}
+    });
+    let original = serde_json::to_vec(&command).unwrap();
+    for _ in 0..2 {
+        channel
+            .basic_publish(
+                "humanizar.acolhimento.command".into(),
+                "cmd.acolhimento.patient.retrieve.v1".into(),
+                BasicPublishOptions::default(),
+                &original,
+                BasicProperties::default(),
+            )
+            .await
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    let mut processed = false;
+    for _ in 0..100 {
+        let client = database.acquire().await.unwrap();
+        let count: i64 = client
+            .query_one(
+                "SELECT count(*) FROM processed_events WHERE event_id = $1",
+                &[&event_id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        if count == 1 {
+            processed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(processed, "Comando nao processado");
+    command["payload"]["patientId"] = json!(Uuid::new_v4());
+    let divergent = serde_json::to_vec(&command).unwrap();
+    channel
+        .basic_publish(
+            "humanizar.acolhimento.command".into(),
+            "cmd.acolhimento.patient.retrieve.v1".into(),
+            BasicPublishOptions::default(),
+            &divergent,
+            BasicProperties::default(),
+        )
+        .await
+        .unwrap()
+        .await
+        .unwrap();
+    let mut quarantined = false;
+    for _ in 0..100 {
+        let client = database.acquire().await.unwrap();
+        let row = client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM dead_letter_quarantine WHERE payload = $1)",
+                &[&divergent],
+            )
+            .await
+            .unwrap();
+        if row.get::<_, bool>(0) {
+            quarantined = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(quarantined, "Evento divergente nao chegou a quarentena");
+    let client = database.acquire().await.unwrap();
+    let row = client.query_one("SELECT (SELECT count(*) FROM processed_events WHERE event_id = $1) AS processed, (SELECT count(*) FROM outbox_events WHERE correlation_id = $2) AS callbacks", &[&event_id, &correlation]).await.unwrap();
+    assert_eq!(row.get::<_, i64>("processed"), 1);
+    assert_eq!(row.get::<_, i64>("callbacks"), 1);
+    drop(client);
+    runtime.shutdown().await.unwrap();
+    assert!(
+        channel
+            .basic_get(
+                QueueCatalog::PATIENT_RETRIEVE_DLQ.into(),
+                BasicGetOptions::default()
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    connection
+        .close(200, "teste concluido".into())
+        .await
+        .unwrap();
+    let client = database.acquire().await.unwrap();
+    client.batch_execute("DROP TRIGGER test_quarantine_failure ON dead_letter_quarantine; DROP FUNCTION test_reject_quarantine(); DROP TABLE test_quarantine_failure;").await.unwrap();
+}
