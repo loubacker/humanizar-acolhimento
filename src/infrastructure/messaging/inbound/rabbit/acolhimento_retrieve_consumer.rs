@@ -65,10 +65,12 @@ pub(crate) async fn run(
             Err(error) => {
                 let mut retry = error.is_retryable();
                 if !retry
+                    && error.reason_code()
+                        != crate::domain::model::enums::ReasonCode::MessageIdentityMismatch
                     && let Some(event) = AcolhimentoCommandMapper::failed_event(
                         &delivery.data,
                         error.reason_code(),
-                        chrono::Local::now().naive_local(),
+                        chrono::Utc::now().naive_utc(),
                     )
                 {
                     correlation_id = Some(event.correlation_id());
@@ -79,7 +81,10 @@ pub(crate) async fn run(
                             continue;
                         }
                         Ok(crate::domain::model::messaging::ProcessingOutcome::Processed) => {}
-                        Err(_) => retry = true,
+                        Err(record_error) => {
+                            retry = record_error.reason_code()
+                                != crate::domain::model::enums::ReasonCode::MessageIdentityMismatch;
+                        }
                     }
                 }
                 tracing::warn!(

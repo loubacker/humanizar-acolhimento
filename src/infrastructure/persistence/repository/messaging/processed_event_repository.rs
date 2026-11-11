@@ -28,6 +28,7 @@ impl ProcessedEventRepository {
         if crate::infrastructure::messaging::inbound::idempotency::ProcessedEventGuard::lock_and_find(
             &transaction,
             command.event_id,
+            &command.event_hash,
         )
         .await?
         {
@@ -44,7 +45,7 @@ impl ProcessedEventRepository {
             .map_err(database_error)?
             .get(0);
 
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let event =
             AcolhimentoCallbackFactory::create(&command, has_acolhimento, now, self.max_attempts)?;
         let entity =
@@ -112,7 +113,7 @@ impl ProcessedEventRepository {
         let receipt = crate::domain::model::messaging::ProcessedEvent::new(
             ConsumerCatalog::RETRIEVE_CONSUMER,
             command.event_id,
-            None,
+            Some(command.event_hash),
             Some(event.event_id()),
             command.correlation_id,
             RoutingKeyCatalog::PATIENT_RETRIEVE_V1,
@@ -140,6 +141,7 @@ impl ProcessedEventRepository {
         if crate::infrastructure::messaging::inbound::idempotency::ProcessedEventGuard::lock_and_find(
             &transaction,
             event.event_id(),
+            event.event_hash().ok_or_else(|| AcolhimentoException::new(ReasonCode::MessageIdentityMismatch))?,
         )
         .await?
         {
