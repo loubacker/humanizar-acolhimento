@@ -84,7 +84,7 @@ fn record_response(
 ) {
     let observation = response.extensions().get::<ErrorObservation>();
     let reason_code = observation
-        .map(|value| value.reason_code)
+        .map(|value| value.reason_code.as_str())
         .unwrap_or_else(|| {
             response
                 .extensions()

@@ -14,7 +14,7 @@ pub struct HttpError {
 
 #[derive(Clone)]
 pub(crate) struct ErrorObservation {
-    pub reason_code: &'static str,
+    pub reason_code: String,
     pub source_present: bool,
 }
 
@@ -49,7 +49,7 @@ impl IntoResponse for HttpError {
         };
         let mut response = (status, Json(dto)).into_response();
         response.extensions_mut().insert(ErrorObservation {
-            reason_code: reason.code(),
+            reason_code: reason.code().to_owned(),
             source_present: self.exception.source().is_some(),
         });
         response.headers_mut().insert(
@@ -78,20 +78,38 @@ pub const fn status_for(reason: ReasonCode) -> StatusCode {
         | ReasonCode::NucleoStaffEmpty
         | ReasonCode::StaffUserIdRequired
         | ReasonCode::RoleRequired
+        | ReasonCode::RoleInvalid
+        | ReasonCode::DuplicateNucleo
+        | ReasonCode::DuplicateStaff
+        | ReasonCode::AvaliacaoFieldTooLong
         | ReasonCode::AvaliacaoPacienteIdRequired
         | ReasonCode::TituloAvaliacaoRequired
         | ReasonCode::InboundRequiredField
         | ReasonCode::InboundParseError
         | ReasonCode::UnsupportedRoutingKey => StatusCode::BAD_REQUEST,
+        ReasonCode::IdempotencyKeyInvalid => StatusCode::BAD_REQUEST,
         ReasonCode::AuthenticationRequired => StatusCode::UNAUTHORIZED,
         ReasonCode::AuthorizationDenied => StatusCode::FORBIDDEN,
         ReasonCode::AcolhimentoNotFound
         | ReasonCode::NucleoPatientNotFound
+        | ReasonCode::AnamneseNotFound
         | ReasonCode::AcolhimentoAvaliacaoNotFound
+        | ReasonCode::AvaliacaoPacienteNotFound
         | ReasonCode::RouteNotFound => StatusCode::NOT_FOUND,
+        ReasonCode::OperationNotFound => StatusCode::NOT_FOUND,
         ReasonCode::AcolhimentoAlreadyExists
+        | ReasonCode::AcolhimentoConcurrentChange
+        | ReasonCode::AnamneseAlreadyExists
         | ReasonCode::AcolhimentoAvaliacaoAlreadyExists
+        | ReasonCode::AvaliacaoPatientMismatch
         | ReasonCode::DuplicateEvent => StatusCode::CONFLICT,
+        ReasonCode::MessageIdentityMismatch => StatusCode::CONFLICT,
+        ReasonCode::OperationConflict
+        | ReasonCode::OperationInProgress
+        | ReasonCode::OperationCompleted
+        | ReasonCode::OperationFailed
+        | ReasonCode::OperationExpired
+        | ReasonCode::OperationLeaseLost => StatusCode::CONFLICT,
         ReasonCode::UnsupportedEventVersion => StatusCode::UNPROCESSABLE_ENTITY,
         ReasonCode::DatabaseAccessFailed | ReasonCode::UnexpectedError => {
             StatusCode::INTERNAL_SERVER_ERROR
