@@ -40,6 +40,7 @@ pub struct NucleoPatientRetrieveDto {
     pub id: Uuid,
     pub nucleo_id: Uuid,
     pub nucleo_patient_staff: Vec<NucleoStaffDto>,
+    pub anamnese: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

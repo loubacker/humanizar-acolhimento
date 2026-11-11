@@ -45,6 +45,7 @@ impl AcolhimentoMapper {
                     id: nucleo.id(),
                     nucleo_id: nucleo.nucleo_id(),
                     nucleo_patient_staff: staff_list,
+                    anamnese: nucleo.anamnese().cloned(),
                 }
             })
             .collect();
