@@ -1,12 +1,14 @@
 use crate::application::http::dto::{
     AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto, AcolhimentoUpdateDto,
 };
+use crate::domain::model::OperationIdentity;
 use crate::infrastructure::controller::dto::SuccessResponseDto;
 use crate::infrastructure::controller::extractor::{ApiJson, ApiPath};
 use crate::infrastructure::controller::handler::HttpError;
 use crate::infrastructure::controller::{ApplicationState, RequestContext};
 use axum::Extension;
 use axum::extract::State;
+use axum::http::StatusCode;
 use uuid::Uuid;
 
 pub async fn find_by_patient_id(
@@ -52,8 +54,9 @@ pub async fn status_by_patient_id(
 pub async fn create(
     State(state): State<ApplicationState>,
     Extension(context): Extension<RequestContext>,
+    Extension(operation): Extension<OperationIdentity>,
     ApiJson(dto): ApiJson<AcolhimentoCreateDto>,
-) -> Result<SuccessResponseDto<AcolhimentoRetrieveDto>, HttpError> {
+) -> Result<(StatusCode, SuccessResponseDto<AcolhimentoRetrieveDto>), HttpError> {
     state
         .acolhimento_service
         .create(
@@ -62,14 +65,18 @@ pub async fn create(
             context.correlation_id,
             context.user_agent.clone(),
             context.origin_ip.clone(),
+            &operation,
         )
         .await
         .map(|data| {
-            SuccessResponseDto::new(
-                "ACOLHIMENTO_CREATED",
-                context.correlation_id.to_string(),
-                "Acolhimento registrado com sucesso",
-                data,
+            (
+                StatusCode::CREATED,
+                SuccessResponseDto::new(
+                    "ACOLHIMENTO_CREATED",
+                    context.correlation_id.to_string(),
+                    "Acolhimento registrado com sucesso",
+                    data,
+                ),
             )
         })
         .map_err(|error| HttpError::new(error, context))
@@ -79,6 +86,7 @@ pub async fn update(
     State(state): State<ApplicationState>,
     ApiPath(id): ApiPath<Uuid>,
     Extension(context): Extension<RequestContext>,
+    Extension(operation): Extension<OperationIdentity>,
     ApiJson(dto): ApiJson<AcolhimentoUpdateDto>,
 ) -> Result<SuccessResponseDto<AcolhimentoRetrieveDto>, HttpError> {
     state
@@ -90,6 +98,7 @@ pub async fn update(
             context.correlation_id,
             context.user_agent.clone(),
             context.origin_ip.clone(),
+            &operation,
         )
         .await
         .map(|data| {
@@ -107,6 +116,7 @@ pub async fn delete(
     State(state): State<ApplicationState>,
     ApiPath(patient_id): ApiPath<Uuid>,
     Extension(context): Extension<RequestContext>,
+    Extension(operation): Extension<OperationIdentity>,
 ) -> Result<SuccessResponseDto<()>, HttpError> {
     state
         .acolhimento_service
@@ -116,6 +126,7 @@ pub async fn delete(
             context.correlation_id,
             context.user_agent.clone(),
             context.origin_ip.clone(),
+            &operation,
         )
         .await
         .map(|()| {

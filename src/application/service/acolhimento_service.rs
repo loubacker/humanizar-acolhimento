@@ -11,7 +11,7 @@ use crate::application::messaging::outbound::factory::StaffOutboxFactory;
 use crate::application::validator::AcolhimentoValidator;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::enums::ReasonCode;
-use crate::domain::model::{NucleoPatient, NucleoPatientStaff};
+use crate::domain::model::{NucleoPatient, NucleoPatientStaff, OperationIdentity};
 use crate::domain::port::{AcolhimentoPort, NucleoPatientPort, NucleoPatientStaffPort};
 
 pub struct AcolhimentoService {
@@ -92,6 +92,7 @@ impl AcolhimentoService {
         correlation_id: Uuid,
         user_agent: Option<String>,
         origin_ip: Option<String>,
+        operation: &OperationIdentity,
     ) -> Result<AcolhimentoRetrieveDto, AcolhimentoException> {
         let patient_id = AcolhimentoValidator::validate_create(&dto)?;
         let existing = self
@@ -104,7 +105,7 @@ impl AcolhimentoService {
             ));
         }
 
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let mut entries = Vec::new();
         let mut outbox_events = Vec::new();
 
@@ -115,7 +116,7 @@ impl AcolhimentoService {
             let mut staff_items = Vec::new();
             for s_dto in n_dto.nucleo_patient_staff {
                 let staff_user_id = s_dto.staff_user_id.unwrap();
-                let role = s_dto.role.unwrap();
+                let role = s_dto.role.unwrap().trim().to_owned();
                 let staff_member =
                     NucleoPatientStaff::create(nucleo_patient.id(), staff_user_id, role.clone());
                 staff_items.push(staff_member);
@@ -143,7 +144,7 @@ impl AcolhimentoService {
 
         let saved = self
             .nucleo_patient_port
-            .replace_patient_nucleos(patient_id, entries, outbox_events)
+            .replace_patient_nucleos(patient_id, &[], &[], entries, outbox_events, operation)
             .await?;
 
         let saved_nucleos: Vec<NucleoPatient> = saved.iter().map(|(n, _)| n.clone()).collect();
@@ -168,6 +169,7 @@ impl AcolhimentoService {
         correlation_id: Uuid,
         user_agent: Option<String>,
         origin_ip: Option<String>,
+        operation: &OperationIdentity,
     ) -> Result<AcolhimentoRetrieveDto, AcolhimentoException> {
         AcolhimentoValidator::validate_update(&dto)?;
 
@@ -185,18 +187,6 @@ impl AcolhimentoService {
             .find_by_nucleo_patient_ids(&old_np_ids)
             .await?;
 
-        // Mapear anamnese prévia por nucleo_id para preservar
-        let mut previous_anamnese: HashMap<Uuid, Option<serde_json::Value>> = HashMap::new();
-        for n in &old_nucleos {
-            previous_anamnese.insert(n.nucleo_id(), n.anamnese().cloned());
-        }
-
-        // Mapear vínculos antigos por (nucleo_id, staff_user_id) -> np_id
-        let mut old_np_by_nucleo_id: HashMap<Uuid, Uuid> = HashMap::new();
-        for n in &old_nucleos {
-            old_np_by_nucleo_id.insert(n.nucleo_id(), n.id());
-        }
-
         let mut old_bindings: HashMap<(Uuid, Uuid), Uuid> = HashMap::new();
         for s in &old_staff_list {
             if let Some(n) = old_nucleos.iter().find(|n| n.id() == s.nucleo_patient_id()) {
@@ -204,24 +194,40 @@ impl AcolhimentoService {
             }
         }
 
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let mut entries = Vec::new();
         let mut outbox_events = Vec::new();
         let mut new_bindings = HashSet::new();
 
         for n_dto in dto.nucleo_patient {
             let nucleo_id = n_dto.nucleo_id.unwrap();
-            let mut nucleo_patient = NucleoPatient::create(patient_id, nucleo_id);
-            if let Some(existing_anamnese) = previous_anamnese.get(&nucleo_id) {
-                nucleo_patient = nucleo_patient.with_anamnese(existing_anamnese.clone());
-            }
+            let nucleo_patient = old_nucleos
+                .iter()
+                .find(|existing| existing.nucleo_id() == nucleo_id)
+                .cloned()
+                .unwrap_or_else(|| NucleoPatient::create(patient_id, nucleo_id));
 
             let mut staff_items = Vec::new();
             for s_dto in n_dto.nucleo_patient_staff {
                 let staff_user_id = s_dto.staff_user_id.unwrap();
-                let role = s_dto.role.unwrap();
-                let staff_member =
-                    NucleoPatientStaff::create(nucleo_patient.id(), staff_user_id, role.clone());
+                let role = s_dto.role.unwrap().trim().to_owned();
+                let staff_member = old_staff_list
+                    .iter()
+                    .find(|staff| {
+                        staff.nucleo_patient_id() == nucleo_patient.id()
+                            && staff.staff_user_id() == staff_user_id
+                    })
+                    .map(|staff| {
+                        NucleoPatientStaff::restore(
+                            staff.id(),
+                            nucleo_patient.id(),
+                            staff_user_id,
+                            role.clone(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        NucleoPatientStaff::create(nucleo_patient.id(), staff_user_id, role.clone())
+                    });
                 staff_items.push(staff_member);
                 new_bindings.insert((nucleo_id, staff_user_id));
 
@@ -248,7 +254,6 @@ impl AcolhimentoService {
             entries.push((nucleo_patient, staff_items));
         }
 
-        // Detectar desvínculos
         for ((nucleo_id, staff_user_id), old_np_id) in old_bindings {
             if !new_bindings.contains(&(nucleo_id, staff_user_id)) {
                 let event = StaffOutboxFactory::create_desvinculado(
@@ -271,7 +276,14 @@ impl AcolhimentoService {
 
         let saved = self
             .nucleo_patient_port
-            .replace_patient_nucleos(patient_id, entries, outbox_events)
+            .replace_patient_nucleos(
+                patient_id,
+                &old_nucleos,
+                &old_staff_list,
+                entries,
+                outbox_events,
+                operation,
+            )
             .await?;
 
         let saved_nucleos: Vec<NucleoPatient> = saved.iter().map(|(n, _)| n.clone()).collect();
@@ -297,6 +309,7 @@ impl AcolhimentoService {
         correlation_id: Uuid,
         user_agent: Option<String>,
         origin_ip: Option<String>,
+        operation: &OperationIdentity,
     ) -> Result<(), AcolhimentoException> {
         let old_nucleos = self
             .nucleo_patient_port
@@ -312,10 +325,10 @@ impl AcolhimentoService {
             .find_by_nucleo_patient_ids(&old_np_ids)
             .await?;
 
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let mut outbox_events = Vec::new();
 
-        for s in old_staff_list {
+        for s in &old_staff_list {
             if let Some(n) = old_nucleos.iter().find(|n| n.id() == s.nucleo_patient_id()) {
                 let event = StaffOutboxFactory::create_desvinculado(
                     correlation_id,
@@ -336,9 +349,14 @@ impl AcolhimentoService {
         }
 
         self.nucleo_patient_port
-            .delete_by_patient_id(patient_id, outbox_events)
+            .delete_by_patient_id(
+                patient_id,
+                &old_nucleos,
+                &old_staff_list,
+                outbox_events,
+                operation,
+            )
             .await?;
-        let _ = self.acolhimento_port.delete_by_patient_id(patient_id).await;
 
         Ok(())
     }
