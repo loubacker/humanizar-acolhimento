@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::domain::exception::AcolhimentoException;
-use crate::domain::model::AcolhimentoAvaliacao;
+use crate::domain::model::{AcolhimentoAvaliacao, OperationIdentity};
 use crate::domain::port::AcolhimentoAvaliacaoPort;
 use crate::infrastructure::persistence::entity::AcolhimentoAvaliacaoEntity;
 use crate::infrastructure::persistence::repository::AcolhimentoAvaliacaoRepository;
@@ -43,17 +43,18 @@ impl AcolhimentoAvaliacaoPort for AcolhimentoAvaliacaoAdapter {
     async fn create(
         &self,
         model: AcolhimentoAvaliacao,
+        operation: &OperationIdentity,
     ) -> Result<AcolhimentoAvaliacao, AcolhimentoException> {
         let entity = AcolhimentoAvaliacaoEntity {
             id: model.id(),
             patient_id: model.patient_id(),
             avaliacao_paciente_id: model.avaliacao_paciente_id(),
-            titulo_avaliacao: model.titulo_avaliacao().to_owned(),
+            titulo_avaliacao: model.titulo_avaliacao().map(ToOwned::to_owned),
             modalidade: model.modalidade().map(ToOwned::to_owned),
             status: model.status().map(ToOwned::to_owned),
             created_at: model.created_at(),
         };
-        let saved = self.repository.create(entity).await?;
+        let saved = self.repository.create(entity, operation).await?;
         Ok(AcolhimentoAvaliacao::restore(
             saved.id,
             saved.patient_id,
@@ -65,7 +66,11 @@ impl AcolhimentoAvaliacaoPort for AcolhimentoAvaliacaoAdapter {
         ))
     }
 
-    async fn delete_by_id(&self, id: Uuid) -> Result<(), AcolhimentoException> {
-        self.repository.delete_by_id(id).await
+    async fn delete_by_id(
+        &self,
+        id: Uuid,
+        operation: &OperationIdentity,
+    ) -> Result<(), AcolhimentoException> {
+        self.repository.delete_by_id(id, operation).await
     }
 }

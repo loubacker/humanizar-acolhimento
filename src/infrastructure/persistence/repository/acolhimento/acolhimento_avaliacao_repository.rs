@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
+use super::{AcolhimentoOperationRepository, NucleoPatientRepository};
 use crate::domain::exception::AcolhimentoException;
+use crate::domain::model::OperationIdentity;
 use crate::domain::model::enums::ReasonCode;
 use crate::infrastructure::config::DatabaseConfig;
 use crate::infrastructure::handler::database_error;
@@ -48,9 +50,25 @@ impl AcolhimentoAvaliacaoRepository {
     pub async fn create(
         &self,
         entity: AcolhimentoAvaliacaoEntity,
+        operation: &OperationIdentity,
     ) -> Result<AcolhimentoAvaliacaoEntity, AcolhimentoException> {
-        let client = self.database.acquire().await?;
-        let row = client
+        let mut client = self.database.acquire().await?;
+        let transaction = client.transaction().await.map_err(database_error)?;
+        AcolhimentoOperationRepository::lock(&transaction, operation).await?;
+        NucleoPatientRepository::lock_patient(&transaction, entity.patient_id).await?;
+        let exists: bool = transaction
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM nucleo_patient WHERE patient_id = $1)",
+                &[&entity.patient_id],
+            )
+            .await
+            .map_err(database_error)?
+            .try_get(0)
+            .map_err(database_error)?;
+        if !exists {
+            return Err(AcolhimentoException::new(ReasonCode::AcolhimentoNotFound));
+        }
+        let row = transaction
             .query_one(
                 r#"
                 INSERT INTO acolhimento_avaliacao (
@@ -84,12 +102,21 @@ impl AcolhimentoAvaliacaoRepository {
             )
             .await
             .map_err(database_error)?;
-        AcolhimentoAvaliacaoEntity::from_row(&row).map_err(database_error)
+        let saved = AcolhimentoAvaliacaoEntity::from_row(&row).map_err(database_error)?;
+        AcolhimentoOperationRepository::complete(&transaction, operation).await?;
+        transaction.commit().await.map_err(database_error)?;
+        Ok(saved)
     }
 
-    pub async fn delete_by_id(&self, id: Uuid) -> Result<(), AcolhimentoException> {
-        let client = self.database.acquire().await?;
-        let affected = client
+    pub async fn delete_by_id(
+        &self,
+        id: Uuid,
+        operation: &OperationIdentity,
+    ) -> Result<(), AcolhimentoException> {
+        let mut client = self.database.acquire().await?;
+        let transaction = client.transaction().await.map_err(database_error)?;
+        AcolhimentoOperationRepository::lock(&transaction, operation).await?;
+        let affected = transaction
             .execute(
                 r#"
                 DELETE FROM acolhimento_avaliacao
@@ -104,6 +131,7 @@ impl AcolhimentoAvaliacaoRepository {
                 ReasonCode::AcolhimentoAvaliacaoNotFound,
             ));
         }
-        Ok(())
+        AcolhimentoOperationRepository::complete(&transaction, operation).await?;
+        transaction.commit().await.map_err(database_error)
     }
 }
