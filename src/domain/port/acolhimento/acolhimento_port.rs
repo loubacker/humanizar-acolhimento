@@ -10,8 +10,4 @@ pub trait AcolhimentoPort: Send + Sync {
         &self,
         patient_id: Uuid,
     ) -> Result<Option<Acolhimento>, AcolhimentoException>;
-
-    async fn upsert(&self, acolhimento: Acolhimento) -> Result<Acolhimento, AcolhimentoException>;
-
-    async fn delete_by_patient_id(&self, patient_id: Uuid) -> Result<(), AcolhimentoException>;
 }

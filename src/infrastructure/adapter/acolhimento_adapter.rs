@@ -4,7 +4,6 @@ use uuid::Uuid;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::Acolhimento;
 use crate::domain::port::AcolhimentoPort;
-use crate::infrastructure::persistence::entity::AcolhimentoEntity;
 use crate::infrastructure::persistence::repository::AcolhimentoRepository;
 
 pub(crate) struct AcolhimentoAdapter {
@@ -35,31 +34,5 @@ impl AcolhimentoPort for AcolhimentoAdapter {
                 e.updated_at,
             )
         }))
-    }
-
-    async fn upsert(&self, acolhimento: Acolhimento) -> Result<Acolhimento, AcolhimentoException> {
-        let entity = AcolhimentoEntity {
-            id: acolhimento.id(),
-            patient_id: acolhimento.patient_id(),
-            data_anamnese: acolhimento.data_anamnese(),
-            hora_anamnese: acolhimento.hora_anamnese(),
-            observacoes: acolhimento.observacoes().map(ToOwned::to_owned),
-            created_at: acolhimento.created_at(),
-            updated_at: acolhimento.updated_at(),
-        };
-        let saved = self.repository.upsert(entity).await?;
-        Ok(Acolhimento::restore(
-            saved.id,
-            saved.patient_id,
-            saved.data_anamnese,
-            saved.hora_anamnese,
-            saved.observacoes,
-            saved.created_at,
-            saved.updated_at,
-        ))
-    }
-
-    async fn delete_by_patient_id(&self, patient_id: Uuid) -> Result<(), AcolhimentoException> {
-        self.repository.delete_by_patient_id(patient_id).await
     }
 }
