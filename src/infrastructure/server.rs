@@ -1,8 +1,8 @@
 use crate::domain::exception::TechnicalError;
 use crate::infrastructure::config::rabbit::RabbitSettings;
 use crate::infrastructure::config::{
-    DatabaseConfig, DatabaseSettings, EnvironmentConfig, SecurityConfig, SecuritySettings,
-    ServerConfig,
+    AvaliacaoPacienteSettings, DatabaseConfig, DatabaseSettings, EnvironmentConfig, SecurityConfig,
+    SecuritySettings, ServerConfig,
 };
 use crate::infrastructure::controller::{ApplicationState, create_router_with_limits};
 use crate::infrastructure::messaging::inbound::rabbit::RabbitRuntime;
@@ -21,6 +21,7 @@ pub async fn run() -> Result<(), TechnicalError> {
         EnvironmentConfig::positive_u32("HTTP_BODY_LIMIT_BYTES", 2 * 1024 * 1024)? as usize;
     let timeout = EnvironmentConfig::positive_duration_seconds("HTTP_TIMEOUT_SECONDS", 30)?;
     let messaging_settings = RabbitSettings::from_env()?;
+    let avaliacao_settings = AvaliacaoPacienteSettings::from_env()?;
     let max_attempts = messaging_settings.max_attempts;
     let database = DatabaseConfig::initialize(DatabaseSettings::from_env()?).await?;
     validate_schema(&database).await?;
@@ -29,7 +30,12 @@ pub async fn run() -> Result<(), TechnicalError> {
         .await
         .map_err(|error| TechnicalError::with_source("Falha ao iniciar listener HTTP", error))?;
     let runtime = RabbitRuntime::start(database.clone(), messaging_settings).await?;
-    let state = ApplicationState::from_database(database, runtime.readiness(), max_attempts);
+    let state = ApplicationState::from_database(
+        database,
+        runtime.readiness(),
+        max_attempts,
+        avaliacao_settings,
+    )?;
     let router = create_router_with_limits(state, &security, body_limit, timeout);
     tracing::info!(
         service = "humanizar-acolhimento",
@@ -58,6 +64,7 @@ async fn validate_schema(database: &DatabaseConfig) -> Result<(), TechnicalError
         "SELECT id, patient_id, avaliacao_paciente_id, titulo_avaliacao, modalidade, status, created_at FROM acolhimento_avaliacao LIMIT 0",
         "SELECT id, event_id, correlation_id, producer_service, exchange_name, routing_key, aggregate_type, aggregate_id, event_version, payload, actor_id, user_agent, origin_ip, status, attempt_count, max_attempts, next_retry_at, last_error, created_at, published_at, locked_by FROM outbox_events LIMIT 0",
         "SELECT id, consumer_name, event_id, event_hash, response_event_id, correlation_id, event_type, aggregate_type, aggregate_id, actor_id, user_agent, origin_ip, processed_at, result, reason_code, error_message FROM processed_events LIMIT 0",
+        "SELECT operation_id, actor_id, action, resource, request_hash, owner, state, reason_code, response_status, response_body, created_at, updated_at, lease_until FROM acolhimento_operations LIMIT 0",
     ] {
         client.query(query, &[]).await.map_err(|error| {
             TechnicalError::with_source(
@@ -108,12 +115,36 @@ async fn validate_schema(database: &DatabaseConfig) -> Result<(), TechnicalError
                             WHERE key.ordinality <= table_index.indnkeyatts
                         ) = ARRAY['consumer_name', 'event_id']::NAME[]
                 ) AS valid_processed_unique
+                , EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'acolhimento_operations'::regclass
+                        AND conname = 'pk_acolhimento_operations'
+                        AND contype = 'p' AND convalidated
+                        AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'acolhimento_operations'::regclass AND attname = 'operation_id')]::SMALLINT[]
+                ) AS valid_operation_pk
+                , (SELECT count(*) = 5 FROM pg_constraint
+                    WHERE conrelid = 'acolhimento_operations'::regclass AND contype = 'c' AND convalidated
+                        AND conname IN ('ck_acolhimento_operations_action', 'ck_acolhimento_operations_state',
+                            'ck_acolhimento_operations_hash', 'ck_acolhimento_operations_resource',
+                            'ck_acolhimento_operations_response')) AS valid_operation_checks
+                , EXISTS (
+                    SELECT 1 FROM pg_attribute
+                    WHERE attrelid = 'acolhimento_avaliacao'::regclass
+                        AND attname = 'titulo_avaliacao' AND NOT attnotnull AND NOT attisdropped
+                ) AS valid_avaliacao_title
             "#,
             &[],
         )
         .await
         .map_err(|error| TechnicalError::with_source("Falha ao validar constraints", error))?;
-    for field in ["valid_fk", "valid_outbox_unique", "valid_processed_unique"] {
+    for field in [
+        "valid_fk",
+        "valid_outbox_unique",
+        "valid_processed_unique",
+        "valid_operation_pk",
+        "valid_operation_checks",
+        "valid_avaliacao_title",
+    ] {
         if !row
             .try_get::<_, bool>(field)
             .map_err(|error| TechnicalError::with_source("Schema invalido", error))?

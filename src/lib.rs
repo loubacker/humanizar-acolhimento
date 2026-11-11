@@ -5,21 +5,34 @@ pub mod domain {
     pub mod model {
         mod acolhimento;
         mod acolhimento_avaliacao;
+        mod acolhimento_operation;
+        mod anamnese_operation;
+        mod avaliacao_paciente_reference;
+        mod delegated_access;
         mod nucleo_patient;
         mod nucleo_patient_staff;
 
         pub use acolhimento::Acolhimento;
         pub use acolhimento_avaliacao::AcolhimentoAvaliacao;
+        pub use acolhimento_operation::{
+            OperationAction, OperationIdentity, OperationReservation, OperationState,
+            OperationStatus,
+        };
+        pub use anamnese_operation::AnamneseOperation;
+        pub use avaliacao_paciente_reference::AvaliacaoPacienteReference;
+        pub use delegated_access::DelegatedAccess;
         pub use nucleo_patient::NucleoPatient;
         pub use nucleo_patient_staff::NucleoPatientStaff;
 
         pub mod messaging {
             mod acolhimento_retrieve_command;
+            mod dead_letter_message;
             mod outbox_event;
             mod outbox_message;
             mod processed_event;
 
             pub use acolhimento_retrieve_command::{AcolhimentoRetrieveCommand, ProcessingOutcome};
+            pub use dead_letter_message::DeadLetterMessage;
             pub use outbox_event::OutboxEvent;
             pub use outbox_message::OutboxMessage;
             pub use processed_event::ProcessedEvent;
@@ -57,28 +70,35 @@ pub mod domain {
     pub mod port {
         pub mod acolhimento {
             mod acolhimento_avaliacao_port;
+            mod acolhimento_operation_port;
             mod acolhimento_port;
+            mod avaliacao_paciente_reference_port;
             mod nucleo_patient_port;
             mod nucleo_patient_staff_port;
 
             pub use acolhimento_avaliacao_port::AcolhimentoAvaliacaoPort;
+            pub use acolhimento_operation_port::AcolhimentoOperationPort;
             pub use acolhimento_port::AcolhimentoPort;
+            pub use avaliacao_paciente_reference_port::AvaliacaoPacienteReferencePort;
             pub use nucleo_patient_port::NucleoPatientPort;
             pub use nucleo_patient_staff_port::NucleoPatientStaffPort;
         }
 
         pub mod messaging {
+            mod dead_letter_quarantine_port;
             mod message_publisher_port;
             mod outbox_event_port;
             mod processed_event_port;
 
+            pub use dead_letter_quarantine_port::DeadLetterQuarantinePort;
             pub use message_publisher_port::MessagePublisherPort;
             pub use outbox_event_port::OutboxEventPort;
             pub use processed_event_port::ProcessedEventPort;
         }
 
         pub use acolhimento::{
-            AcolhimentoAvaliacaoPort, AcolhimentoPort, NucleoPatientPort, NucleoPatientStaffPort,
+            AcolhimentoAvaliacaoPort, AcolhimentoOperationPort, AcolhimentoPort,
+            AvaliacaoPacienteReferencePort, NucleoPatientPort, NucleoPatientStaffPort,
         };
     }
 }
@@ -155,18 +175,24 @@ pub mod application {
                 mod acolhimento_anamnese_dto;
                 mod acolhimento_avaliacao_dto;
                 mod acolhimento_dto;
+                mod avaliacao_paciente_reference_dto;
 
                 pub use acolhimento_anamnese_dto::{
                     AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto,
-                    AnamneseItemDto, AnamneseSectionDto,
+                    AnamneseDetailDto, AnamneseItemDto, AnamneseRequestDto, AnamneseSectionDto,
                 };
                 pub use acolhimento_avaliacao_dto::{
                     AcolhimentoAvaliacaoRegisterDto, AcolhimentoAvaliacaoRetrieveDto,
+                    AvaliacaoDisponivelDto,
                 };
                 pub use acolhimento_dto::{
                     AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto,
                     AcolhimentoUpdateDto, NucleoPatientDto, NucleoPatientRetrieveDto,
                     NucleoStaffDto,
+                };
+                pub use avaliacao_paciente_reference_dto::{
+                    AvaliacaoPacienteErrorEnvelopeDto, AvaliacaoPacienteReferenceDto,
+                    AvaliacaoPacienteReferenceEnvelopeDto,
                 };
             }
 
@@ -174,8 +200,10 @@ pub mod application {
                 AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto,
                 AcolhimentoAvaliacaoRegisterDto, AcolhimentoAvaliacaoRetrieveDto,
                 AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto,
-                AcolhimentoUpdateDto, AnamneseItemDto, AnamneseSectionDto, NucleoPatientDto,
-                NucleoPatientRetrieveDto, NucleoStaffDto,
+                AcolhimentoUpdateDto, AnamneseDetailDto, AnamneseItemDto, AnamneseRequestDto,
+                AnamneseSectionDto, AvaliacaoDisponivelDto, AvaliacaoPacienteErrorEnvelopeDto,
+                AvaliacaoPacienteReferenceDto, AvaliacaoPacienteReferenceEnvelopeDto,
+                NucleoPatientDto, NucleoPatientRetrieveDto, NucleoStaffDto,
             };
         }
 
@@ -184,14 +212,17 @@ pub mod application {
                 mod acolhimento_anamnese_mapper;
                 mod acolhimento_avaliacao_mapper;
                 mod acolhimento_mapper;
+                mod avaliacao_paciente_reference_mapper;
 
                 pub use acolhimento_anamnese_mapper::AcolhimentoAnamneseMapper;
                 pub use acolhimento_avaliacao_mapper::AcolhimentoAvaliacaoMapper;
                 pub use acolhimento_mapper::AcolhimentoMapper;
+                pub use avaliacao_paciente_reference_mapper::AvaliacaoPacienteReferenceMapper;
             }
 
             pub use acolhimento::{
                 AcolhimentoAnamneseMapper, AcolhimentoAvaliacaoMapper, AcolhimentoMapper,
+                AvaliacaoPacienteReferenceMapper,
             };
         }
     }
@@ -234,6 +265,7 @@ pub mod infrastructure {
             pub mod rabbit {
                 mod acolhimento_retrieve_consumer;
                 mod dead_letter_consumer;
+                mod dead_letter_delivery_mapper;
                 mod rabbit_runtime;
 
                 pub use rabbit_runtime::RabbitRuntime;
@@ -280,11 +312,13 @@ pub mod infrastructure {
             pub use rabbit_settings::RabbitSettings;
         }
 
+        mod avaliacao_paciente_config;
         mod database_config;
         mod environment_config;
         mod security_config;
         mod server_config;
 
+        pub use avaliacao_paciente_config::AvaliacaoPacienteSettings;
         pub use database_config::{DatabaseConfig, DatabaseConfigError, DatabaseSettings};
         pub(crate) use environment_config::EnvironmentConfig;
         pub use security_config::{SecurityConfig, SecurityConfigError, SecuritySettings};
@@ -294,6 +328,9 @@ pub mod infrastructure {
     pub(crate) mod adapter {
         mod acolhimento_adapter;
         mod acolhimento_avaliacao_adapter;
+        mod acolhimento_operation_adapter;
+        mod avaliacao_paciente_reference_adapter;
+        mod dead_letter_quarantine_adapter;
         mod nucleo_patient_adapter;
         mod nucleo_patient_staff_adapter;
         mod outbox_event_adapter;
@@ -301,6 +338,9 @@ pub mod infrastructure {
 
         pub(crate) use acolhimento_adapter::AcolhimentoAdapter;
         pub(crate) use acolhimento_avaliacao_adapter::AcolhimentoAvaliacaoAdapter;
+        pub(crate) use acolhimento_operation_adapter::AcolhimentoOperationAdapter;
+        pub(crate) use avaliacao_paciente_reference_adapter::AvaliacaoPacienteReferenceAdapter;
+        pub(crate) use dead_letter_quarantine_adapter::DeadLetterQuarantineAdapter;
         pub(crate) use nucleo_patient_adapter::NucleoPatientAdapter;
         pub(crate) use nucleo_patient_staff_adapter::NucleoPatientStaffAdapter;
         pub(crate) use outbox_event_adapter::OutboxEventAdapter;
@@ -344,29 +384,35 @@ pub mod infrastructure {
         pub(crate) mod repository {
             pub(crate) mod acolhimento {
                 mod acolhimento_avaliacao_repository;
+                mod acolhimento_operation_repository;
                 mod acolhimento_repository;
                 mod nucleo_patient_repository;
                 mod nucleo_patient_staff_repository;
 
                 pub(crate) use acolhimento_avaliacao_repository::AcolhimentoAvaliacaoRepository;
+                pub(crate) use acolhimento_operation_repository::AcolhimentoOperationRepository;
                 pub(crate) use acolhimento_repository::AcolhimentoRepository;
                 pub(crate) use nucleo_patient_repository::NucleoPatientRepository;
                 pub(crate) use nucleo_patient_staff_repository::NucleoPatientStaffRepository;
             }
 
             pub(crate) mod messaging {
+                mod dead_letter_quarantine_repository;
                 mod outbox_event_repository;
                 mod processed_event_repository;
 
+                pub(crate) use dead_letter_quarantine_repository::DeadLetterQuarantineRepository;
                 pub(crate) use outbox_event_repository::OutboxEventRepository;
                 pub(crate) use processed_event_repository::ProcessedEventRepository;
             }
 
             pub(crate) use acolhimento::{
-                AcolhimentoAvaliacaoRepository, AcolhimentoRepository, NucleoPatientRepository,
-                NucleoPatientStaffRepository,
+                AcolhimentoAvaliacaoRepository, AcolhimentoOperationRepository,
+                AcolhimentoRepository, NucleoPatientRepository, NucleoPatientStaffRepository,
             };
-            pub(crate) use messaging::{OutboxEventRepository, ProcessedEventRepository};
+            pub(crate) use messaging::{
+                DeadLetterQuarantineRepository, OutboxEventRepository, ProcessedEventRepository,
+            };
         }
     }
 
@@ -400,6 +446,7 @@ pub mod infrastructure {
     pub mod controller {
         pub mod extractor;
         mod http_observability;
+        mod operation_guard;
         mod request_context;
         mod router;
         mod state;
@@ -428,6 +475,7 @@ pub mod infrastructure {
             pub(crate) mod acolhimento_anamnese_controller;
             pub(crate) mod acolhimento_avaliacao_controller;
             pub(crate) mod acolhimento_controller;
+            pub(crate) mod acolhimento_operation_controller;
         }
     }
 }
