@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub(crate) struct OutboxEventEntity {
@@ -18,10 +18,10 @@ pub(crate) struct OutboxEventEntity {
     pub status: String,
     pub attempt_count: i32,
     pub max_attempts: i32,
-    pub next_retry_at: Option<NaiveDateTime>,
+    pub next_retry_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
-    pub created_at: NaiveDateTime,
-    pub published_at: Option<NaiveDateTime>,
+    pub created_at: DateTime<Utc>,
+    pub published_at: Option<DateTime<Utc>>,
     pub locked_by: Option<Uuid>,
 }
 

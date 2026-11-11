@@ -64,7 +64,12 @@ impl OutboxEventRepository {
                     event.published_at,
                     event.locked_by
                 "#,
-                &[&now, &i64::from(batch), &owner, &lease_until],
+                &[
+                    &now.and_utc(),
+                    &i64::from(batch),
+                    &owner,
+                    &lease_until.and_utc(),
+                ],
             )
             .await
             .map_err(database_error)?;
@@ -95,7 +100,7 @@ impl OutboxEventRepository {
                     AND locked_by = $3
                     AND status = 'LOCKED'
                 "#,
-                &[&message.id(), &message.event_id(), &owner, &now],
+                &[&message.id(), &message.event_id(), &owner, &now.and_utc()],
             )
             .await
             .map_err(database_error)?;
@@ -124,7 +129,7 @@ impl OutboxEventRepository {
                     AND locked_by = $3
                     AND status = 'LOCKED'
                 "#,
-                &[&message.id(), &message.event_id(), &owner, &next_retry_at],
+                &[&message.id(), &message.event_id(), &owner, &next_retry_at.and_utc()],
             )
             .await
             .map_err(database_error)?;
@@ -162,7 +167,7 @@ impl OutboxEventRepository {
                 USING expired
                 WHERE processed.id = expired.id
                 "#,
-                &[&processed_cutoff],
+                &[&processed_cutoff.and_utc()],
             )
             .await
             .map_err(database_error)?;
@@ -180,7 +185,7 @@ impl OutboxEventRepository {
                 USING expired
                 WHERE event.id = expired.id
                 "#,
-                &[&outbox_cutoff],
+                &[&outbox_cutoff.and_utc()],
             )
             .await
             .map_err(database_error)?;

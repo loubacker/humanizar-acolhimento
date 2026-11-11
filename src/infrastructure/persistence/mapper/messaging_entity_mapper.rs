@@ -40,10 +40,10 @@ impl MessagingEntityMapper {
             .to_owned(),
             attempt_count: i32::try_from(event.attempt_count()).map_err(invalid_number)?,
             max_attempts: i32::try_from(event.max_attempts()).map_err(invalid_number)?,
-            next_retry_at: event.next_retry_at(),
+            next_retry_at: event.next_retry_at().map(|value| value.and_utc()),
             last_error: event.last_error().map(str::to_owned),
-            created_at: event.created_at(),
-            published_at: event.published_at(),
+            created_at: event.created_at().and_utc(),
+            published_at: event.published_at().map(|value| value.and_utc()),
             locked_by: event.locked_by(),
         })
     }
@@ -62,7 +62,7 @@ impl MessagingEntityMapper {
             actor_id: event.actor_id(),
             user_agent: event.user_agent().map(str::to_owned),
             origin_ip: event.origin_ip().map(str::to_owned),
-            processed_at: event.processed_at(),
+            processed_at: event.processed_at().and_utc(),
             result: match event.result() {
                 ProcessedResult::Success => "SUCCESS",
                 ProcessedResult::Ignored => "IGNORED",

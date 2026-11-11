@@ -15,7 +15,7 @@ pub(crate) async fn run(
             _ = stop.cancelled() => return Ok(()),
             _ = tokio::time::sleep(settings.retention_interval) => {}
         }
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let removed = outbox
             .purge(
                 now - settings.outbox_retention,

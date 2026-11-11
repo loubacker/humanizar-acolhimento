@@ -18,7 +18,7 @@ pub(crate) async fn run(
         if !publisher.is_available() {
             return Err(TechnicalError::new("Canal publisher indisponivel"));
         }
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Utc::now().naive_utc();
         let lease = chrono::Duration::from_std(settings.lease)
             .map_err(|error| TechnicalError::with_source("Lease invalida", error))?;
         let messages = outbox

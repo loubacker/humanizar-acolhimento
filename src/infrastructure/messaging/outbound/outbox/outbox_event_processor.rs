@@ -33,7 +33,7 @@ impl OutboxEventProcessor {
         let persisted = match self.publisher.publish(&message).await {
             Ok(()) => {
                 self.outbox
-                    .complete(&message, self.owner, chrono::Local::now().naive_local())
+                    .complete(&message, self.owner, chrono::Utc::now().naive_utc())
                     .await
             }
             Err(error) => {
@@ -50,11 +50,7 @@ impl OutboxEventProcessor {
                 )
                 .map_err(|error| TechnicalError::with_source("Delay invalido", error))?;
                 self.outbox
-                    .fail(
-                        &message,
-                        self.owner,
-                        chrono::Local::now().naive_local() + delay,
-                    )
+                    .fail(&message, self.owner, chrono::Utc::now().naive_utc() + delay)
                     .await
             }
         }

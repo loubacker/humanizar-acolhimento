@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub(crate) struct ProcessedEventEntity {
@@ -14,7 +14,7 @@ pub(crate) struct ProcessedEventEntity {
     pub actor_id: Option<Uuid>,
     pub user_agent: Option<String>,
     pub origin_ip: Option<String>,
-    pub processed_at: NaiveDateTime,
+    pub processed_at: DateTime<Utc>,
     pub result: String,
     pub reason_code: Option<String>,
     pub error_message: Option<String>,
