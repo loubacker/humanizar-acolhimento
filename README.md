@@ -15,7 +15,7 @@
 
 O `humanizar-acolhimento` é o serviço central do ecossistema Humanizar responsável pelo ciclo de acolhimento, registro e acompanhamento do paciente. Migrado integralmente de Java para Rust (executando na porta `9099`), ele absorveu todas as responsabilidades que pertenciam ao extinto serviço `humanizar-nucleo-relacionamento`, unificando a gestão de núcleos e equipe técnica do paciente.
 
-O serviço opera com runtime assíncrono Axum e Tokio, persistência PostgreSQL com pool BB8 e composição explícita baseada em Arquitetura Hexagonal. Os eventos de alocação de equipe técnica comunicam-se diretamente com o serviço `humanizar-notification` através de mensageria RabbitMQ confiável com Transactional Outbox e garantia de entrega.
+O serviço opera com runtime assíncrono Axum e Tokio, persistência PostgreSQL com pool BB8 e composição explícita baseada em Arquitetura Hexagonal. Os eventos de alocação de equipe técnica são registrados em Outbox para publicação no RabbitMQ e processamento pelo `humanizar-notification`.
 
 ## Responsabilidades
 
@@ -24,12 +24,12 @@ O serviço opera com runtime assíncrono Axum e Tokio, persistência PostgreSQL 
 - Alocação e manutenção da equipe técnica por núcleo (`nucleo_patient_staff`), identificando o colaborador exclusivamente pelo campo declarativo `staff_user_id` e seu papel (`role`);
 - Vinculação, acompanhamento e desassociação de avaliações clínicas e questionários (`acolhimento_avaliacao`) integrados com o `humanizar-avaliacao-paciente`;
 - Publicação de eventos transacionais de equipe (`staff.vinculado` e `staff.desvinculado`) direcionados à `humanizar-notification`;
-- Atendimento assíncrono a comandos de consulta de acolhimento via RabbitMQ com garantia de deduplicação e idempotência;
+- Atendimento assíncrono a comandos de consulta de acolhimento via RabbitMQ, com deduplicação por identidade e conteúdo do evento;
 - Rastreabilidade ponta a ponta através do cabeçalho `X-Correlation-ID`.
 
 ## Arquitetura e Padrões
 
-O projeto adota rigorosamente as diretrizes da Arquitetura Hexagonal canônica e da skill `gloubacker-coder-style`:
+O projeto organiza suas responsabilidades em camadas de Arquitetura Hexagonal:
 
 - **Camadas estritas**: `domain`, `application` e `infrastructure`, com dependências sempre apontando para o domínio;
 - **Centralização de módulos**: todos os módulos registrados explicitamente em `src/lib.rs`, **sem nenhum arquivo `mod.rs`**;
@@ -80,17 +80,24 @@ Base path: `/api/v1/acolhimento`. Porta padrão: `9099`.
 | `GET` | `/api/v1/acolhimento/paciente/{patientId}` | Retorna o acolhimento completo do paciente com núcleos e staff |
 | `GET` | `/api/v1/acolhimento/paciente/status/{patientId}` | Retorna o status resumido de acolhimento do paciente |
 | `GET` | `/api/v1/acolhimento/anamnese/paciente/{patientId}` | Retorna a anamnese estruturada dos núcleos do paciente |
+| `GET` | `/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}` | Retorna a anamnese do núcleo informado |
 | `GET` | `/api/v1/acolhimento/avaliacoes/{patientId}` | Lista todas as avaliações clínicas vinculadas ao paciente |
+| `GET` | `/api/v1/acolhimento/avaliacoes-disponiveis/{patientId}` | Consulta avaliações disponíveis na fonte canônica |
 
 ### Comandos e Mutações (Exigem Bearer JWT + Role `ADMINISTRADOR`)
+
+As mutações exigem um `Idempotency-Key` UUID por intenção. Após perda de resposta, consulte `GET /api/v1/acolhimento/operacoes/{operationId}?acao=...` com o mesmo usuário antes de uma nova tentativa.
 
 | Método | Rota | Código HTTP | Descrição |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/acolhimento/register` | `201 Created` | Cria o registro de acolhimento do paciente com núcleos e staff |
 | `PUT` | `/api/v1/acolhimento/update/{id}` | `200 OK` | Atualiza o acolhimento, núcleos e equipe técnica do paciente |
 | `DELETE` | `/api/v1/acolhimento/delete/{patientId}` | `200 OK` | Remove o registro de acolhimento e desassocia núcleos do paciente |
-| `POST` | `/api/v1/acolhimento/anamnese/register` | `201 Created` | Registra a anamnese técnica do núcleo do paciente |
+| `POST` | `/api/v1/acolhimento/anamnese/register` | `200 OK` | Registra ou atualiza a anamnese geral do paciente |
 | `PUT` | `/api/v1/acolhimento/anamnese/update/{patientId}` | `200 OK` | Atualiza a anamnese técnica do paciente |
+| `POST` | `/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}` | `201 Created` | Registra a anamnese do núcleo |
+| `PUT` | `/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}` | `200 OK` | Atualiza a anamnese do núcleo |
+| `DELETE` | `/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}` | `200 OK` | Remove apenas a anamnese do núcleo informado |
 | `POST` | `/api/v1/acolhimento/avaliacoes/register` | `201 Created` | Vincula uma avaliação existente ao acolhimento do paciente |
 | `DELETE` | `/api/v1/acolhimento/avaliacoes/{id}` | `200 OK` | Desvincula uma avaliação de acolhimento pelo ID |
 
@@ -172,6 +179,8 @@ cmd.acolhimento.patient.retrieve.v1
 
 A fila associada `humanizar.acolhimento.patient.retrieve` é configurada como Quorum Queue com ACK manual e envio automático para DLQ (`humanizar.acolhimento.patient.retrieve.dlq`) após limite de tentativas.
 
+O consumidor da DLQ mantém a entrega sem ACK enquanto tenta gravá-la em `dead_letter_quarantine`. A quarentena preserva o corpo e as propriedades da mensagem para investigação; o ACK ocorre após a gravação. É necessário aplicar a migração da quarentena antes de iniciar esta versão.
+
 ### Callbacks Publicados
 
 ```text
@@ -186,32 +195,36 @@ ev.acolhimento.staff.vinculado.v1
 ev.acolhimento.staff.desvinculado.v1
 ```
 
-O envelope do evento transporta `staffUserId`, `patientId`, `nucleoId` e `role`, acionando diretamente o envio de notificações institucionais para o colaborador vinculado ou desvinculado.
+Os eventos transportam `staffUserId`, `patientId` e `nucleoId`; o evento de vínculo também informa `role`. A entrega das notificações depende do processamento e do resultado dos provedores no `humanizar-notification`.
 
 ### Transactional Outbox e Retenção
 
 1. Mutações de acolhimento gravam o estado de domínio e os eventos de outbox atomicamente na mesma transação PostgreSQL;
-2. O worker de relay seleciona lotes com `FOR UPDATE SKIP LOCKED`, garantindo exclusividade de execução com `locked_by` e `next_retry_at`;
+2. O worker de relay seleciona lotes com `FOR UPDATE SKIP LOCKED` e controla a posse com `locked_by` e `next_retry_at`;
 3. A publicação no RabbitMQ é executada com mandatory e publisher confirms habilitados;
 4. Falhas transitórias aplicam backoff exponencial até o esgotamento de tentativas (`DEAD`);
-5. O worker de retenção limpa periodicamente registros `PUBLISHED` e `DEAD` com mais de 48 horas e recibos processados com mais de 90 dias.
+5. O worker de retenção limpa periodicamente registros `PUBLISHED` com mais de 48 horas e recibos processados com mais de 90 dias. Os registros `DEAD` permanecem disponíveis para investigação.
 
 ## Persistência PostgreSQL
 
-O script inicial transacional está versionado em:
+Os scripts transacionais são aplicados em ordem, sem execução automática no startup:
 
 | Arquivo | Descrição |
 | --- | --- |
 | [`migrations/0001_initial_schema.sql`](migrations/0001_initial_schema.sql) | Criação de tabelas, PKs, FKs, constraints e índices para o banco limpo |
+| [`migrations/0002_dead_letter_quarantine.sql`](migrations/0002_dead_letter_quarantine.sql) | Quarentena durável das mensagens recebidas na DLQ |
+| [`migrations/0003_acolhimento_operations.sql`](migrations/0003_acolhimento_operations.sql) | Registro das intenções e resultados das mutações |
+| [`migrations/0004_avaliacao_titulo_nullable.sql`](migrations/0004_avaliacao_titulo_nullable.sql) | Permite vincular avaliação que ainda não possui título |
 
 ## Como Executar Localmente
 
 ### Pré-requisitos
 
 - Rust `1.99.0` (edition 2024), fixado em `rust-toolchain.toml`, com Cargo, Clippy e rustfmt;
-- PostgreSQL 15+ com banco `humanizar_acolhimento` e script `0001_initial_schema.sql` executado;
+- PostgreSQL 15+ com banco `humanizar_acolhimento` e migrações executadas em ordem;
 - RabbitMQ com permissões no vhost configurado;
 - Keycloak com realm ativo e emissão de tokens.
+- `AVALIACAO_PACIENTE_URL` com o endereço interno do serviço de Avaliação Paciente; o token autenticado é encaminhado à consulta, sem criar permissões adicionais no Keycloak.
 
 ### Inicialização
 
