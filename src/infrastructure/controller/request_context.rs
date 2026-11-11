@@ -15,6 +15,9 @@ pub struct RequestContext {
 
 impl RequestContext {
     pub(crate) fn from_request(request: &Request) -> Self {
+        if let Some(context) = request.extensions().get::<Self>() {
+            return context.clone();
+        }
         let correlation_id = request
             .headers()
             .get("x-correlation-id")

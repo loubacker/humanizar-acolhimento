@@ -1,5 +1,6 @@
 use super::{AuthenticatedUser, JwtValidator};
 use crate::domain::exception::SecurityException;
+use crate::domain::model::DelegatedAccess;
 use crate::infrastructure::controller::RequestContext;
 use crate::infrastructure::controller::handler::HttpError;
 use axum::extract::{Request, State};
@@ -13,15 +14,19 @@ pub(crate) async fn authenticate(
     mut request: Request,
     next: Next,
 ) -> Result<Response, HttpError> {
-    let context = RequestContext::from_request(&request);
+    let mut context = RequestContext::from_request(&request);
     let token = bearer_token(&request).map_err(|error| HttpError::new(error, context.clone()))?;
     let principal = validator.validate(token).await.map_err(|error| {
         HttpError::new(
             SecurityException::authentication_with_source(error),
-            context,
+            context.clone(),
         )
     })?;
+    let access = DelegatedAccess::new(token.to_owned());
+    context.actor_id = uuid::Uuid::parse_str(principal.subject()).ok();
     request.extensions_mut().insert(principal);
+    request.extensions_mut().insert(access);
+    request.extensions_mut().insert(context);
     Ok(next.run(request).await)
 }
 
