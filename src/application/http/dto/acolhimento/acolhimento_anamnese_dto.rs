@@ -3,6 +3,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnamneseDetailDto {
+    pub data_anamnese: NaiveDate,
+    pub hora_anamnese: NaiveTime,
+    pub observacoes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AnamneseRequestDto {
+    pub payload: AnamneseDetailDto,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnamneseSectionDto {
