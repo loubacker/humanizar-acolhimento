@@ -26,6 +26,14 @@ impl RabbitRuntime {
         database: DatabaseConfig,
         settings: RabbitSettings,
     ) -> Result<Self, TechnicalError> {
+        let connection = database.acquire().await.map_err(|error| {
+            TechnicalError::with_source("Banco da quarentena indisponivel", error)
+        })?;
+        connection
+            .prepare("SELECT id, queue_name, exchange_name, routing_key, payload, properties, received_at FROM dead_letter_quarantine LIMIT 0")
+            .await
+            .map_err(|error| TechnicalError::with_source("Schema da quarentena indisponivel", error))?;
+        drop(connection);
         let settings = Arc::new(settings);
         let services = MessagingServices::new(database, settings.max_attempts);
         let stop = CancellationToken::new();
@@ -132,8 +140,12 @@ impl Session {
             &rabbit::RabbitConnectionConfig::channel(&self.connection).await?,
         )
         .await?;
-        self.tasks
-            .spawn(dead_letter_consumer::run(consumer, self.stop.clone()));
+        self.tasks.spawn(dead_letter_consumer::run(
+            consumer,
+            services.quarantine,
+            settings.reconnect_delay,
+            self.stop.clone(),
+        ));
         self.tasks.spawn(outbox_relay_worker::run(
             services.outbox.clone(),
             publisher,

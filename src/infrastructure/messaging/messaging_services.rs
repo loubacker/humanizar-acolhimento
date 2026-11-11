@@ -1,8 +1,12 @@
-use crate::domain::port::messaging::{OutboxEventPort, ProcessedEventPort};
-use crate::infrastructure::adapter::{OutboxEventAdapter, ProcessedEventAdapter};
+use crate::domain::port::messaging::{
+    DeadLetterQuarantinePort, OutboxEventPort, ProcessedEventPort,
+};
+use crate::infrastructure::adapter::{
+    DeadLetterQuarantineAdapter, OutboxEventAdapter, ProcessedEventAdapter,
+};
 use crate::infrastructure::config::DatabaseConfig;
 use crate::infrastructure::persistence::repository::{
-    OutboxEventRepository, ProcessedEventRepository,
+    DeadLetterQuarantineRepository, OutboxEventRepository, ProcessedEventRepository,
 };
 use std::sync::Arc;
 
@@ -10,6 +14,7 @@ use std::sync::Arc;
 pub struct MessagingServices {
     pub outbox: Arc<dyn OutboxEventPort>,
     pub processed: Arc<dyn ProcessedEventPort>,
+    pub quarantine: Arc<dyn DeadLetterQuarantinePort>,
 }
 
 impl MessagingServices {
@@ -19,9 +24,12 @@ impl MessagingServices {
                 database.clone(),
             ))),
             processed: Arc::new(ProcessedEventAdapter::new(ProcessedEventRepository::new(
-                database,
+                database.clone(),
                 max_attempts,
             ))),
+            quarantine: Arc::new(DeadLetterQuarantineAdapter::new(
+                DeadLetterQuarantineRepository::new(database),
+            )),
         }
     }
 }
