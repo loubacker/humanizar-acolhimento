@@ -176,7 +176,7 @@ impl OutboxEventRepository {
                 r#"
                 WITH expired AS (
                     SELECT id FROM outbox_event
-                    WHERE status IN ('PUBLISHED', 'DEAD')
+                    WHERE status = 'PUBLISHED'
                         AND created_at < $1
                     ORDER BY created_at, id
                     LIMIT 1000 FOR UPDATE SKIP LOCKED
