@@ -6,7 +6,7 @@ pub struct AcolhimentoAvaliacao {
     id: Uuid,
     patient_id: Uuid,
     avaliacao_paciente_id: Uuid,
-    titulo_avaliacao: String,
+    titulo_avaliacao: Option<String>,
     modalidade: Option<String>,
     status: Option<String>,
     created_at: NaiveDateTime,
@@ -16,7 +16,7 @@ impl AcolhimentoAvaliacao {
     pub fn create(
         patient_id: Uuid,
         avaliacao_paciente_id: Uuid,
-        titulo_avaliacao: String,
+        titulo_avaliacao: Option<String>,
         modalidade: Option<String>,
         status: Option<String>,
     ) -> Self {
@@ -36,7 +36,7 @@ impl AcolhimentoAvaliacao {
         id: Uuid,
         patient_id: Uuid,
         avaliacao_paciente_id: Uuid,
-        titulo_avaliacao: String,
+        titulo_avaliacao: Option<String>,
         modalidade: Option<String>,
         status: Option<String>,
         created_at: NaiveDateTime,
@@ -64,8 +64,8 @@ impl AcolhimentoAvaliacao {
         self.avaliacao_paciente_id
     }
 
-    pub fn titulo_avaliacao(&self) -> &str {
-        &self.titulo_avaliacao
+    pub fn titulo_avaliacao(&self) -> Option<&str> {
+        self.titulo_avaliacao.as_deref()
     }
 
     pub fn modalidade(&self) -> Option<&str> {

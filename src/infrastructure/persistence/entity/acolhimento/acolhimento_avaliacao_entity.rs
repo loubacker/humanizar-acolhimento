@@ -5,7 +5,7 @@ pub(crate) struct AcolhimentoAvaliacaoEntity {
     pub id: Uuid,
     pub patient_id: Uuid,
     pub avaliacao_paciente_id: Uuid,
-    pub titulo_avaliacao: String,
+    pub titulo_avaliacao: Option<String>,
     pub modalidade: Option<String>,
     pub status: Option<String>,
     pub created_at: NaiveDateTime,
