@@ -5,7 +5,8 @@ use uuid::Uuid;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::messaging::OutboxEvent;
 use crate::domain::model::{
-    Acolhimento, AnamneseOperation, NucleoPatient, NucleoPatientStaff, OperationIdentity,
+    Acolhimento, AnamneseOperation, NucleoPatient, NucleoPatientHistory, NucleoPatientHistoryPage,
+    NucleoPatientStaff, OperationIdentity,
 };
 
 #[async_trait]
@@ -26,6 +27,19 @@ pub trait NucleoPatientPort: Send + Sync {
         outbox_events: Vec<OutboxEvent>,
         operation: &OperationIdentity,
     ) -> Result<Vec<(NucleoPatient, Vec<NucleoPatientStaff>)>, AcolhimentoException>;
+
+    async fn history(
+        &self,
+        patient_id: Uuid,
+        page: u32,
+        size: u32,
+    ) -> Result<NucleoPatientHistoryPage, AcolhimentoException>;
+
+    async fn history_detail(
+        &self,
+        patient_id: Uuid,
+        nucleo_patient_id: Uuid,
+    ) -> Result<Option<NucleoPatientHistory>, AcolhimentoException>;
 
     async fn save_anamnese(
         &self,
