@@ -13,7 +13,7 @@ use crate::infrastructure::adapter::{
 use crate::infrastructure::config::{AvaliacaoPacienteSettings, DatabaseConfig};
 use crate::infrastructure::persistence::repository::{
     AcolhimentoAvaliacaoRepository, AcolhimentoOperationRepository, AcolhimentoRepository,
-    NucleoPatientRepository, NucleoPatientStaffRepository,
+    NucleoPatientHistoryRepository, NucleoPatientRepository, NucleoPatientStaffRepository,
 };
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -56,6 +56,7 @@ impl ApplicationState {
         let health_database = database.clone();
         let nucleo_patient_port: Arc<dyn NucleoPatientPort> = Arc::new(NucleoPatientAdapter::new(
             NucleoPatientRepository::new(database.clone()),
+            NucleoPatientHistoryRepository::new(database.clone()),
         ));
         let nucleo_patient_staff_port: Arc<dyn NucleoPatientStaffPort> = Arc::new(
             NucleoPatientStaffAdapter::new(NucleoPatientStaffRepository::new(database.clone())),

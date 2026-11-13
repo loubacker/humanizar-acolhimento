@@ -5,21 +5,31 @@ use uuid::Uuid;
 use crate::domain::exception::AcolhimentoException;
 use crate::domain::model::messaging::OutboxEvent;
 use crate::domain::model::{
-    Acolhimento, AnamneseOperation, NucleoPatient, NucleoPatientStaff, OperationIdentity,
+    Acolhimento, AnamneseOperation, NucleoPatient, NucleoPatientHistory, NucleoPatientHistoryPage,
+    NucleoPatientStaff, OperationIdentity,
 };
 use crate::domain::port::NucleoPatientPort;
 use crate::infrastructure::persistence::entity::{
-    AcolhimentoEntity, NucleoPatientEntity, NucleoPatientStaffEntity,
+    AcolhimentoEntity, NucleoPatientEntity, NucleoPatientHistoryEntity, NucleoPatientStaffEntity,
 };
-use crate::infrastructure::persistence::repository::NucleoPatientRepository;
+use crate::infrastructure::persistence::repository::{
+    NucleoPatientHistoryRepository, NucleoPatientRepository,
+};
 
 pub(crate) struct NucleoPatientAdapter {
     repository: NucleoPatientRepository,
+    history_repository: NucleoPatientHistoryRepository,
 }
 
 impl NucleoPatientAdapter {
-    pub fn new(repository: NucleoPatientRepository) -> Self {
-        Self { repository }
+    pub fn new(
+        repository: NucleoPatientRepository,
+        history_repository: NucleoPatientHistoryRepository,
+    ) -> Self {
+        Self {
+            repository,
+            history_repository,
+        }
     }
 }
 
@@ -131,6 +141,31 @@ impl NucleoPatientPort for NucleoPatientAdapter {
             .collect())
     }
 
+    async fn history(
+        &self,
+        patient_id: Uuid,
+        page: u32,
+        size: u32,
+    ) -> Result<NucleoPatientHistoryPage, AcolhimentoException> {
+        let (entries, staff, total_elements) =
+            self.history_repository.list(patient_id, page, size).await?;
+        Ok(NucleoPatientHistoryPage {
+            content: map_history(entries, staff),
+            page,
+            size,
+            total_elements,
+        })
+    }
+
+    async fn history_detail(
+        &self,
+        patient_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<NucleoPatientHistory>, AcolhimentoException> {
+        let (entries, staff, _) = self.history_repository.detail(patient_id, id).await?;
+        Ok(map_history(entries, staff).into_iter().next())
+    }
+
     async fn save_anamnese(
         &self,
         acolhimento: Acolhimento,
@@ -220,4 +255,36 @@ fn to_staff_entity(staff: &NucleoPatientStaff) -> NucleoPatientStaffEntity {
         staff_user_id: staff.staff_user_id(),
         role: staff.role().to_owned(),
     }
+}
+
+fn map_history(
+    entries: Vec<NucleoPatientHistoryEntity>,
+    staff: Vec<NucleoPatientStaffEntity>,
+) -> Vec<NucleoPatientHistory> {
+    let mut grouped = std::collections::HashMap::<Uuid, Vec<NucleoPatientStaff>>::new();
+    for staff in staff {
+        grouped
+            .entry(staff.nucleo_patient_id)
+            .or_default()
+            .push(NucleoPatientStaff::restore(
+                staff.id,
+                staff.nucleo_patient_id,
+                staff.staff_user_id,
+                staff.role,
+            ));
+    }
+    entries
+        .into_iter()
+        .map(|entry| NucleoPatientHistory {
+            id: entry.id,
+            nucleo_id: entry.nucleo_id,
+            created_at: entry.created_at,
+            desvinculado_at: entry.desvinculado_at,
+            desvinculado_por: entry.desvinculado_por,
+            desvinculo_operation_id: entry.desvinculo_operation_id,
+            possui_anamnese: entry.possui_anamnese,
+            anamnese: entry.anamnese,
+            responsaveis: grouped.remove(&entry.id).unwrap_or_default(),
+        })
+        .collect()
 }
