@@ -3,9 +3,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::application::http::dto::{
-    AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto, AcolhimentoUpdateDto,
+    AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto,
+    AcolhimentoUpdateDto, NucleoPatientHistoryDetailDto, NucleoPatientHistoryPageDto,
 };
-use crate::application::http::mapper::AcolhimentoMapper;
+use crate::application::http::mapper::{AcolhimentoHistoryMapper, AcolhimentoMapper};
 use crate::application::messaging::outbound::dto::{StaffDesvinculadoDto, StaffVinculadoDto};
 use crate::application::messaging::outbound::factory::StaffOutboxFactory;
 use crate::application::validator::AcolhimentoValidator;
@@ -69,6 +70,41 @@ impl AcolhimentoService {
             &nucleos,
             &staff_by_np,
         ))
+    }
+
+    pub async fn history(
+        &self,
+        patient_id: Uuid,
+        page: u32,
+        size: u32,
+    ) -> Result<NucleoPatientHistoryPageDto, AcolhimentoException> {
+        if size == 0 || size > 100 || patient_id.is_nil() {
+            return Err(AcolhimentoException::new(
+                ReasonCode::RequestParameterInvalid,
+            ));
+        }
+        self.nucleo_patient_port
+            .history(patient_id, page, size)
+            .await
+            .map(AcolhimentoHistoryMapper::page)
+    }
+
+    pub async fn history_detail(
+        &self,
+        patient_id: Uuid,
+        id: Uuid,
+    ) -> Result<NucleoPatientHistoryDetailDto, AcolhimentoException> {
+        if patient_id.is_nil() || id.is_nil() {
+            return Err(AcolhimentoException::new(
+                ReasonCode::RequestParameterInvalid,
+            ));
+        }
+        let value = self
+            .nucleo_patient_port
+            .history_detail(patient_id, id)
+            .await?
+            .ok_or_else(|| AcolhimentoException::new(ReasonCode::NucleoPatientNotFound))?;
+        Ok(AcolhimentoHistoryMapper::detail(value))
     }
 
     pub async fn find_status_by_patient_id(
