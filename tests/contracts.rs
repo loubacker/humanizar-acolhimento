@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+use humanizar_acolhimento::application::http::dto::{
+    AcolhimentoUpdateDto, AnamneseDeleteRequestDto, AnamneseRequestDto,
+};
 use humanizar_acolhimento::application::messaging::inbound::mapper::AcolhimentoCommandMapper;
 use serde_json::json;
 use uuid::Uuid;
@@ -37,3 +40,19 @@ fn command_hash_distinguishes_replays_from_divergent_content() {
     assert_eq!(first.event_id, changed.event_id);
     assert_ne!(first.event_hash, changed.event_hash);
 }
+
+#[test]
+fn empty_update_requires_an_explicit_array() {
+    let update: AcolhimentoUpdateDto =
+        serde_json::from_value(json!({"nucleoPatient":[],"expectedNucleoPatientIds":[]})).unwrap();
+    assert!(update.nucleo_patient.is_empty());
+    for body in [
+        json!({}),
+        json!({"nucleoPatient":[]}),
+        json!({"nucleoPatient":[],"expectedNucleoPatientIds":null}),
+        json!({"nucleoPatient":null,"expectedNucleoPatientIds":[]}),
+    ] {
+        assert!(serde_json::from_value::<AcolhimentoUpdateDto>(body).is_err());
+    }
+}
+
