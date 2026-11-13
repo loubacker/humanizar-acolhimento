@@ -1,6 +1,6 @@
 use super::acolhimento::{
     acolhimento_anamnese_controller, acolhimento_avaliacao_controller, acolhimento_controller,
-    acolhimento_operation_controller,
+    acolhimento_history_controller, acolhimento_operation_controller,
 };
 use super::{ApplicationState, http_observability, operation_guard};
 use crate::infrastructure::config::SecurityConfig;
@@ -27,6 +27,14 @@ pub fn create_router_with_limits(
     let health_state = state.clone();
     let operations = security.protect_administrator(
         Router::new()
+            .route(
+                "/api/v1/acolhimento/paciente/{patientId}/historico",
+                get(acolhimento_history_controller::list),
+            )
+            .route(
+                "/api/v1/acolhimento/paciente/{patientId}/historico/{nucleoPatientId}",
+                get(acolhimento_history_controller::detail),
+            )
             .route(
                 "/api/v1/acolhimento/operacoes/{operationId}",
                 get(acolhimento_operation_controller::find),
