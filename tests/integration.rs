@@ -1874,4 +1874,72 @@ async fn verify_periods(
     assert_eq!(stale_status, StatusCode::CONFLICT);
     assert_eq!(stale_body["reasonCode"], "ACOLHIMENTO_CONCURRENT_CHANGE");
     assert!(new_period["anamnese"].is_null());
+    let mut stale = clinical.clone();
+    stale["nucleoPatientId"] = json!(first_id);
+    for method in ["POST", "PUT", "DELETE"] {
+        let (status, body) = period_request(
+            router,
+            method,
+            &anamnese_path,
+            admin,
+            json!({"payload":stale}),
+            Uuid::new_v4(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["reasonCode"], "NUCLEO_PATIENT_PERIOD_MISMATCH");
+    }
+    let mut fresh = clinical.clone();
+    fresh["nucleoPatientId"] = json!(new_id);
+    fresh["observacoes"] = json!("Novo periodo");
+    let fresh_operation = Uuid::new_v4();
+    assert_eq!(
+        period_request(
+            router,
+            "POST",
+            &anamnese_path,
+            admin,
+            json!({"payload":fresh.clone()}),
+            fresh_operation
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    fresh["nucleoPatientId"] = json!(first_id);
+    let (status, changed_period) = period_request(
+        router,
+        "POST",
+        &anamnese_path,
+        admin,
+        json!({"payload":fresh}),
+        fresh_operation,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(changed_period["reasonCode"], "OPERATION_CONFLICT");
+    assert_eq!(
+        period_request(
+            router,
+            "GET",
+            &detail_path,
+            admin,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .1["data"],
+        historical
+    );
+    let (status, current) = period_request(
+        router,
+        "GET",
+        &anamnese_path,
+        admin,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(current["data"]["nucleoPatientId"], new_id);
 }
