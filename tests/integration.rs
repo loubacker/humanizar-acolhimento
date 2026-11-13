@@ -649,7 +649,9 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         json_body(response).await["correlationId"],
         correlation.to_string()
     );
-    let payload = json!({"payload": detail});
+    let mut detail_with_period = detail.clone();
+    detail_with_period["nucleoPatientId"] = json!(section);
+    let payload = json!({"payload": detail_with_period});
     let response = router
         .clone()
         .oneshot(request(
@@ -695,7 +697,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(json_body(response).await["data"]["observacoes"], "teste");
     let update_path = format!("/api/v1/acolhimento/update/{patient}");
-    let update = json!({"nucleoPatient":[{"nucleoId":nucleus,"nucleoPatientStaff":[{"staffUserId":staff,"role":"COORDENADOR"}]}]});
+    let update = json!({"expectedNucleoPatientIds":[section],"nucleoPatient":[{"nucleoId":nucleus,"nucleoPatientStaff":[{"staffUserId":staff,"role":"COORDENADOR"}]}]});
     let response = router
         .clone()
         .oneshot(request(
@@ -723,7 +725,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         )
         .await
         .unwrap();
-    let changed = |role: &str| json!({"nucleoPatient":[{"nucleoId":nucleus,"nucleoPatientStaff":[{"staffUserId":staff,"role":role}]}]});
+    let changed = |role: &str| json!({"expectedNucleoPatientIds":[section],"nucleoPatient":[{"nucleoId":nucleus,"nucleoPatientStaff":[{"staffUserId":staff,"role":role}]}]});
     let pending_id = Uuid::new_v4();
     let mut pending_request = request(
         "PUT",
@@ -789,7 +791,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
                 &anamnese_path,
                 Some(&admin),
                 correlation,
-                Value::Null
+                json!({"payload":{"nucleoPatientId":section}})
             ))
             .await
             .unwrap()
@@ -1171,7 +1173,10 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     let update_path = format!("/api/v1/acolhimento/update/{patient}");
     let update_conflict = format!("/api/v1/acolhimento/update/{other_id}");
     let update_invalid = "/api/v1/acolhimento/update/not-a-uuid";
-    let update = json!({"nucleoPatient":[{"nucleoId":nucleus,
+    let period_client = database.acquire().await.unwrap();
+    let period_id: Uuid = period_client.query_one("SELECT id FROM nucleo_patient WHERE patient_id=$1 AND nucleo_id=$2 AND desvinculado_at IS NULL",&[&patient,&nucleus]).await.unwrap().get(0);
+    drop(period_client);
+    let update = json!({"expectedNucleoPatientIds":[period_id],"nucleoPatient":[{"nucleoId":nucleus,
         "nucleoPatientStaff":[{"staffUserId":staff,"role":"ADMINISTRADOR"}]}]});
     check_mutation(
         &router,
@@ -1195,7 +1200,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     let anamnese_path = format!("/api/v1/acolhimento/anamnese/{patient}/{nucleus}");
     let anamnese_conflict = format!("/api/v1/acolhimento/anamnese/{patient}/{other_id}");
     let anamnese_invalid = format!("/api/v1/acolhimento/anamnese/not-a-uuid/{nucleus}");
-    let detail = json!({"payload":{"dataAnamnese":"2026-10-28",
+    let detail = json!({"payload":{"nucleoPatientId":period_id,"dataAnamnese":"2026-10-28",
         "horaAnamnese":"09:30:00","observacoes":"primeira"}});
     check_mutation(
         &router,
@@ -1215,7 +1220,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         },
     )
     .await;
-    let changed_detail = json!({"payload":{"dataAnamnese":"2026-10-28",
+    let changed_detail = json!({"payload":{"nucleoPatientId":period_id,"dataAnamnese":"2026-10-28",
         "horaAnamnese":"10:30:00","observacoes":"atualizada"}});
     check_mutation(
         &router,
@@ -1244,11 +1249,11 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
             action: "ANAMNESE_EXCLUIR",
             method: "DELETE",
             path: &anamnese_path,
-            payload: Value::Null,
+            payload: json!({"payload":{"nucleoPatientId":period_id}}),
             conflicting_path: &anamnese_conflict,
-            conflicting_payload: Value::Null,
+            conflicting_payload: json!({"payload":{"nucleoPatientId":period_id}}),
             invalid_path: &anamnese_invalid,
-            invalid_payload: Value::Null,
+            invalid_payload: json!({"payload":{"nucleoPatientId":period_id}}),
             status: StatusCode::OK,
         },
     )
@@ -1330,7 +1335,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     .await;
     let client = database.acquire().await.unwrap();
     let row = client.query_one(
-        "SELECT (SELECT count(*) FROM nucleo_patient WHERE patient_id = $1) AS links, \
+        "SELECT (SELECT count(*) FROM nucleo_patient WHERE patient_id = $1 AND desvinculado_at IS NULL) AS links, \
          (SELECT count(*) FROM outbox_events WHERE payload::text LIKE '%' || $1::text || '%') AS events",
         &[&patient],
     ).await.unwrap();
