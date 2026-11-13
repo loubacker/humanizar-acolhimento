@@ -2034,4 +2034,57 @@ async fn verify_periods(
     assert_eq!(history["data"]["totalElements"], 3);
     assert_eq!(history["data"]["totalPages"], 3);
     assert_eq!(history["data"]["content"].as_array().unwrap().len(), 1);
+    let status_path = format!("/api/v1/acolhimento/paciente/status/{patient}");
+    assert_eq!(
+        period_request(
+            router,
+            "GET",
+            &status_path,
+            admin,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .1["data"]["hasAcolhimento"],
+        false
+    );
+    let get_path = format!("/api/v1/acolhimento/paciente/{patient}");
+    assert_eq!(
+        period_request(router, "GET", &get_path, admin, Value::Null, Uuid::new_v4())
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, recreated) = period_request(
+        router,
+        "POST",
+        "/api/v1/acolhimento/register",
+        admin,
+        create,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert!(!recreated["data"]["createdAt"].is_null());
+    let delete_path = format!("/api/v1/acolhimento/delete/{patient}");
+    assert_eq!(
+        period_request(
+            router,
+            "DELETE",
+            &delete_path,
+            admin,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let client = database.acquire().await.unwrap();
+    let row = client.query_one("SELECT (SELECT count(*) FROM acolhimento WHERE patient_id=$1) AS headers,(SELECT count(*) FROM nucleo_patient WHERE patient_id=$1 AND desvinculado_at IS NOT NULL) AS periods,(SELECT count(*) FROM nucleo_patient_staff s JOIN nucleo_patient n ON n.id=s.nucleo_patient_id WHERE n.patient_id=$1) AS staff",&[&patient]).await.unwrap();
+    assert_eq!(row.get::<_, i64>("headers"), 1);
+    assert_eq!(row.get::<_, i64>("periods"), 5);
+    assert_eq!(row.get::<_, i64>("staff"), 5);
+    let preserved: i64 = client.query_one("SELECT count(*) FROM acolhimento_avaliacao WHERE patient_id=$1 AND avaliacao_paciente_id=$2",&[&patient,&assessment_id]).await.unwrap().get(0);
+    assert_eq!(preserved, 1);
 }
