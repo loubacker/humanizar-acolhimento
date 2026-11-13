@@ -58,7 +58,7 @@ impl AcolhimentoAvaliacaoRepository {
         NucleoPatientRepository::lock_patient(&transaction, entity.patient_id).await?;
         let exists: bool = transaction
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM nucleo_patient WHERE patient_id = $1)",
+                "SELECT EXISTS(SELECT 1 FROM nucleo_patient WHERE patient_id = $1 AND desvinculado_at IS NULL)",
                 &[&entity.patient_id],
             )
             .await
