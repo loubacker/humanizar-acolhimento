@@ -58,7 +58,7 @@ async fn validate_schema(database: &DatabaseConfig) -> Result<(), TechnicalError
         .await
         .map_err(|error| TechnicalError::with_source("Falha ao validar schema", error))?;
     for query in [
-        "SELECT id, patient_id, nucleo_id, anamnese, created_at, updated_at FROM nucleo_patient LIMIT 0",
+        "SELECT id, patient_id, nucleo_id, anamnese, created_at, updated_at, desvinculado_at, desvinculado_por, desvinculo_operation_id FROM nucleo_patient LIMIT 0",
         "SELECT id, nucleo_patient_id, staff_user_id, role FROM nucleo_patient_staff LIMIT 0",
         "SELECT id, patient_id, data_anamnese, hora_anamnese, observacoes, created_at, updated_at FROM acolhimento LIMIT 0",
         "SELECT id, patient_id, avaliacao_paciente_id, titulo_avaliacao, modalidade, status, created_at FROM acolhimento_avaliacao LIMIT 0",
@@ -132,6 +132,17 @@ async fn validate_schema(database: &DatabaseConfig) -> Result<(), TechnicalError
                     WHERE attrelid = 'acolhimento_avaliacao'::regclass
                         AND attname = 'titulo_avaliacao' AND NOT attnotnull AND NOT attisdropped
                 ) AS valid_avaliacao_title
+                , EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'nucleo_patient'::regclass AND conname = 'ck_nucleo_patient_desvinculo'
+                        AND contype = 'c' AND convalidated
+                ) AS valid_period_check
+                , EXISTS (
+                    SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+                    WHERE i.indrelid='nucleo_patient'::regclass AND c.relname='uk_nucleo_patient_patient_nucleo'
+                        AND i.indisunique AND i.indisvalid AND i.indisready
+                        AND pg_get_expr(i.indpred,i.indrelid) = '(desvinculado_at IS NULL)'
+                ) AS valid_active_unique
             "#,
             &[],
         )
@@ -144,6 +155,8 @@ async fn validate_schema(database: &DatabaseConfig) -> Result<(), TechnicalError
         "valid_operation_pk",
         "valid_operation_checks",
         "valid_avaliacao_title",
+        "valid_period_check",
+        "valid_active_unique",
     ] {
         if !row
             .try_get::<_, bool>(field)
