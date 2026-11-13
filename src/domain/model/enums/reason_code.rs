@@ -7,6 +7,7 @@ pub enum ReasonCode {
     ValidationError,
     PatientIdRequired,
     NucleoPatientEmpty,
+    NucleoPatientPeriodMismatch,
     NucleoStaffEmpty,
     StaffUserIdRequired,
     RoleRequired,
@@ -63,6 +64,7 @@ impl ReasonCode {
             Self::ValidationError => "VALIDATION_ERROR",
             Self::PatientIdRequired => "PATIENT_ID_REQUIRED",
             Self::NucleoPatientEmpty => "NUCLEO_PATIENT_EMPTY",
+            Self::NucleoPatientPeriodMismatch => "NUCLEO_PATIENT_PERIOD_MISMATCH",
             Self::NucleoStaffEmpty => "NUCLEO_STAFF_EMPTY",
             Self::StaffUserIdRequired => "STAFF_USER_ID_REQUIRED",
             Self::RoleRequired => "ROLE_REQUIRED",
@@ -119,6 +121,9 @@ impl ReasonCode {
             Self::ValidationError => "Falha de validacao do payload/evento.",
             Self::PatientIdRequired => "Patient id obrigatorio",
             Self::NucleoPatientEmpty => "Lista de nucleos do paciente vazia",
+            Self::NucleoPatientPeriodMismatch => {
+                "O período do vínculo foi encerrado ou alterado. Recarregue os dados."
+            }
             Self::NucleoStaffEmpty => "Lista de staff do nucleo vazia",
             Self::StaffUserIdRequired => "Staff user id obrigatorio",
             Self::RoleRequired => "Role do staff obrigatoria",

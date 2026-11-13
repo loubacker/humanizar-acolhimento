@@ -224,7 +224,7 @@ impl NucleoPatientRepository {
         Self::lock_patient(&transaction, acolhimento.patient_id).await?;
         let nucleos = transaction
             .query(
-                "SELECT id FROM nucleo_patient WHERE patient_id = $1 ORDER BY id FOR UPDATE",
+                "SELECT id FROM nucleo_patient WHERE patient_id = $1 AND desvinculado_at IS NULL ORDER BY id FOR UPDATE",
                 &[&acolhimento.patient_id],
             )
             .await
@@ -240,7 +240,7 @@ impl NucleoPatientRepository {
                     SET
                         anamnese = $2,
                         updated_at = $3
-                    WHERE id = $1 AND patient_id = $4
+                    WHERE id = $1 AND patient_id = $4 AND desvinculado_at IS NULL
                     "#,
                     &[
                         &id,
@@ -326,6 +326,7 @@ impl NucleoPatientRepository {
         &self,
         patient_id: Uuid,
         nucleo_id: Uuid,
+        nucleo_patient_id: Uuid,
         operation: AnamneseOperation,
         anamnese: Option<Value>,
         operation_identity: &OperationIdentity,
@@ -339,12 +340,17 @@ impl NucleoPatientRepository {
         Self::lock_patient(&transaction, patient_id).await?;
         let row = transaction
             .query_opt(
-                "SELECT anamnese FROM nucleo_patient WHERE patient_id = $1 AND nucleo_id = $2 FOR UPDATE",
+                "SELECT id, anamnese FROM nucleo_patient WHERE patient_id = $1 AND nucleo_id = $2 AND desvinculado_at IS NULL FOR UPDATE",
                 &[&patient_id, &nucleo_id],
             )
             .await
             .map_err(database_error)?
-            .ok_or_else(|| AcolhimentoException::new(ReasonCode::NucleoPatientNotFound))?;
+            .ok_or_else(|| AcolhimentoException::new(ReasonCode::NucleoPatientPeriodMismatch))?;
+        if row.try_get::<_, Uuid>("id").map_err(database_error)? != nucleo_patient_id {
+            return Err(AcolhimentoException::new(
+                ReasonCode::NucleoPatientPeriodMismatch,
+            ));
+        }
         let existing: Option<Value> = row.try_get("anamnese").map_err(database_error)?;
         match (operation, existing.is_some()) {
             (AnamneseOperation::Create, true) => {
@@ -357,7 +363,7 @@ impl NucleoPatientRepository {
         }
         transaction
             .execute(
-                "UPDATE nucleo_patient SET anamnese = $3, updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo' WHERE patient_id = $1 AND nucleo_id = $2",
+                "UPDATE nucleo_patient SET anamnese = $3, updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo' WHERE patient_id = $1 AND nucleo_id = $2 AND desvinculado_at IS NULL",
                 &[&patient_id, &nucleo_id, &anamnese],
             )
             .await

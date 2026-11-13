@@ -103,7 +103,9 @@ pub const fn status_for(reason: ReasonCode) -> StatusCode {
         | ReasonCode::AcolhimentoAvaliacaoAlreadyExists
         | ReasonCode::AvaliacaoPatientMismatch
         | ReasonCode::DuplicateEvent => StatusCode::CONFLICT,
-        ReasonCode::MessageIdentityMismatch => StatusCode::CONFLICT,
+        ReasonCode::MessageIdentityMismatch | ReasonCode::NucleoPatientPeriodMismatch => {
+            StatusCode::CONFLICT
+        }
         ReasonCode::OperationConflict
         | ReasonCode::OperationInProgress
         | ReasonCode::OperationCompleted
