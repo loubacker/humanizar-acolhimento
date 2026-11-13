@@ -1844,4 +1844,34 @@ async fn verify_periods(
             StatusCode::BAD_REQUEST
         );
     }
+    let (status, relocated) = period_request(
+        router,
+        "PUT",
+        &update_path,
+        admin,
+        json!({"expectedNucleoPatientIds":[second_id],"nucleoPatient":nuclei}),
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let new_period = relocated["data"]["nucleos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["nucleoId"] == nucleus.to_string())
+        .unwrap();
+    let new_id = new_period["id"].as_str().unwrap().to_owned();
+    assert_ne!(new_id, first_id);
+    let (stale_status, stale_body) = period_request(
+        router,
+        "PUT",
+        &update_path,
+        admin,
+        json!({"expectedNucleoPatientIds":[first_id,second_id],"nucleoPatient":[]}),
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(stale_status, StatusCode::CONFLICT);
+    assert_eq!(stale_body["reasonCode"], "ACOLHIMENTO_CONCURRENT_CHANGE");
+    assert!(new_period["anamnese"].is_null());
 }
