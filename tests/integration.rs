@@ -1341,6 +1341,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     ).await.unwrap();
     assert_eq!(row.get::<_, i64>("links"), 0);
     assert_eq!(row.get::<_, i64>("events"), 2);
+    verify_periods(&router, &database, &admin, &ordinary, &references, actor).await;
     task.abort();
 }
 
@@ -1578,4 +1579,102 @@ async fn rabbit_retains_dlq_until_quarantine_and_deduplicates_callbacks() {
         .unwrap();
     let client = database.acquire().await.unwrap();
     client.batch_execute("DROP TRIGGER test_quarantine_failure ON dead_letter_quarantine; DROP FUNCTION test_reject_quarantine(); DROP TABLE test_quarantine_failure;").await.unwrap();
+}
+
+async fn period_request(
+    router: &Router,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Value,
+    operation: Uuid,
+) -> (StatusCode, Value) {
+    let mut value = request(method, path, Some(token), Uuid::new_v4(), body);
+    if method != "GET" {
+        value
+            .headers_mut()
+            .insert("idempotency-key", operation.to_string().parse().unwrap());
+    }
+    let response = router.clone().oneshot(value).await.unwrap();
+    (response.status(), json_body(response).await)
+}
+
+async fn verify_periods(
+    router: &Router,
+    database: &DatabaseConfig,
+    admin: &str,
+    ordinary: &str,
+    references: &Arc<tokio::sync::RwLock<HashMap<Uuid, Value>>>,
+    actor: Uuid,
+) {
+    let patient = Uuid::new_v4();
+    let nucleus = Uuid::new_v4();
+    let second_nucleus = Uuid::new_v4();
+    let staff = Uuid::new_v4();
+    let staff_other = Uuid::new_v4();
+    let nuclei = json!([
+        {"nucleoId":nucleus,"nucleoPatientStaff":[{"staffUserId":staff,"role":"COORDENADOR"}]},
+        {"nucleoId":second_nucleus,"nucleoPatientStaff":[{"staffUserId":staff_other,"role":"COORDENADOR"}]}
+    ]);
+    assert_eq!(
+        period_request(
+            router,
+            "POST",
+            "/api/v1/acolhimento/register",
+            admin,
+            json!({"patientId":patient,"nucleoPatient":[]}),
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let create = json!({"patientId":patient,"nucleoPatient":nuclei});
+    let (status, created) = period_request(
+        router,
+        "POST",
+        "/api/v1/acolhimento/register",
+        admin,
+        create.clone(),
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let empty_history = format!("/api/v1/acolhimento/paciente/{patient}/historico");
+    let (history_status, empty_page) = period_request(
+        router,
+        "GET",
+        &empty_history,
+        admin,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(history_status, StatusCode::OK);
+    assert_eq!(empty_page["data"]["totalElements"], 0);
+    assert!(empty_page["data"]["content"].as_array().unwrap().is_empty());
+    let response = router
+        .clone()
+        .oneshot(request(
+            "GET",
+            &empty_history,
+            None,
+            Uuid::new_v4(),
+            Value::Null,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let client = database.acquire().await.unwrap();
+    let duplicate = client
+        .execute(
+            "INSERT INTO nucleo_patient (id,patient_id,nucleo_id) VALUES ($1,$2,$3)",
+            &[&Uuid::new_v4(), &patient, &nucleus],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(duplicate.code().unwrap().code(), "23505");
+    let invalid_close = client.execute("UPDATE nucleo_patient SET desvinculado_at=CURRENT_TIMESTAMP WHERE patient_id=$1 AND nucleo_id=$2",&[&patient,&nucleus]).await.unwrap_err();
+    assert_eq!(invalid_close.code().unwrap().code(), "23514");
+    drop(client);
 }
