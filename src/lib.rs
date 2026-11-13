@@ -10,6 +10,7 @@ pub mod domain {
         mod avaliacao_paciente_reference;
         mod delegated_access;
         mod nucleo_patient;
+        mod nucleo_patient_history;
         mod nucleo_patient_staff;
 
         pub use acolhimento::Acolhimento;
@@ -22,6 +23,7 @@ pub mod domain {
         pub use avaliacao_paciente_reference::AvaliacaoPacienteReference;
         pub use delegated_access::DelegatedAccess;
         pub use nucleo_patient::NucleoPatient;
+        pub use nucleo_patient_history::{NucleoPatientHistory, NucleoPatientHistoryPage};
         pub use nucleo_patient_staff::NucleoPatientStaff;
 
         pub mod messaging {
@@ -175,11 +177,14 @@ pub mod application {
                 mod acolhimento_anamnese_dto;
                 mod acolhimento_avaliacao_dto;
                 mod acolhimento_dto;
+                mod acolhimento_history_dto;
                 mod avaliacao_paciente_reference_dto;
 
                 pub use acolhimento_anamnese_dto::{
                     AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto,
-                    AnamneseDetailDto, AnamneseItemDto, AnamneseRequestDto, AnamneseSectionDto,
+                    AnamneseDeleteRequestDto, AnamneseDetailDto, AnamneseItemDto,
+                    AnamnesePeriodIdentityDto, AnamnesePeriodPayloadDto, AnamneseRequestDto,
+                    AnamneseRetrieveDto, AnamneseSectionDto,
                 };
                 pub use acolhimento_avaliacao_dto::{
                     AcolhimentoAvaliacaoRegisterDto, AcolhimentoAvaliacaoRetrieveDto,
@@ -189,6 +194,10 @@ pub mod application {
                     AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto,
                     AcolhimentoUpdateDto, NucleoPatientDto, NucleoPatientRetrieveDto,
                     NucleoStaffDto,
+                };
+                pub use acolhimento_history_dto::{
+                    NucleoPatientHistoryDetailDto, NucleoPatientHistoryDto,
+                    NucleoPatientHistoryPageDto, NucleoPatientHistoryStaffDto,
                 };
                 pub use avaliacao_paciente_reference_dto::{
                     AvaliacaoPacienteErrorEnvelopeDto, AvaliacaoPacienteReferenceDto,
@@ -200,10 +209,14 @@ pub mod application {
                 AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto,
                 AcolhimentoAvaliacaoRegisterDto, AcolhimentoAvaliacaoRetrieveDto,
                 AcolhimentoCreateDto, AcolhimentoPatientStatusDto, AcolhimentoRetrieveDto,
-                AcolhimentoUpdateDto, AnamneseDetailDto, AnamneseItemDto, AnamneseRequestDto,
-                AnamneseSectionDto, AvaliacaoDisponivelDto, AvaliacaoPacienteErrorEnvelopeDto,
-                AvaliacaoPacienteReferenceDto, AvaliacaoPacienteReferenceEnvelopeDto,
-                NucleoPatientDto, NucleoPatientRetrieveDto, NucleoStaffDto,
+                AcolhimentoUpdateDto, AnamneseDeleteRequestDto, AnamneseDetailDto, AnamneseItemDto,
+                AnamnesePeriodIdentityDto, AnamnesePeriodPayloadDto, AnamneseRequestDto,
+                AnamneseRetrieveDto, AnamneseSectionDto, AvaliacaoDisponivelDto,
+                AvaliacaoPacienteErrorEnvelopeDto, AvaliacaoPacienteReferenceDto,
+                AvaliacaoPacienteReferenceEnvelopeDto, NucleoPatientDto,
+                NucleoPatientHistoryDetailDto, NucleoPatientHistoryDto,
+                NucleoPatientHistoryPageDto, NucleoPatientHistoryStaffDto,
+                NucleoPatientRetrieveDto, NucleoStaffDto,
             };
         }
 
@@ -211,18 +224,20 @@ pub mod application {
             pub mod acolhimento {
                 mod acolhimento_anamnese_mapper;
                 mod acolhimento_avaliacao_mapper;
+                mod acolhimento_history_mapper;
                 mod acolhimento_mapper;
                 mod avaliacao_paciente_reference_mapper;
 
                 pub use acolhimento_anamnese_mapper::AcolhimentoAnamneseMapper;
                 pub use acolhimento_avaliacao_mapper::AcolhimentoAvaliacaoMapper;
+                pub use acolhimento_history_mapper::AcolhimentoHistoryMapper;
                 pub use acolhimento_mapper::AcolhimentoMapper;
                 pub use avaliacao_paciente_reference_mapper::AvaliacaoPacienteReferenceMapper;
             }
 
             pub use acolhimento::{
-                AcolhimentoAnamneseMapper, AcolhimentoAvaliacaoMapper, AcolhimentoMapper,
-                AvaliacaoPacienteReferenceMapper,
+                AcolhimentoAnamneseMapper, AcolhimentoAvaliacaoMapper, AcolhimentoHistoryMapper,
+                AcolhimentoMapper, AvaliacaoPacienteReferenceMapper,
             };
         }
     }
@@ -367,17 +382,19 @@ pub mod infrastructure {
                 mod acolhimento_avaliacao_entity;
                 mod acolhimento_entity;
                 mod nucleo_patient_entity;
+                mod nucleo_patient_history_entity;
                 mod nucleo_patient_staff_entity;
 
                 pub(crate) use acolhimento_avaliacao_entity::AcolhimentoAvaliacaoEntity;
                 pub(crate) use acolhimento_entity::AcolhimentoEntity;
                 pub(crate) use nucleo_patient_entity::NucleoPatientEntity;
+                pub(crate) use nucleo_patient_history_entity::NucleoPatientHistoryEntity;
                 pub(crate) use nucleo_patient_staff_entity::NucleoPatientStaffEntity;
             }
 
             pub(crate) use acolhimento::{
                 AcolhimentoAvaliacaoEntity, AcolhimentoEntity, NucleoPatientEntity,
-                NucleoPatientStaffEntity,
+                NucleoPatientHistoryEntity, NucleoPatientStaffEntity,
             };
         }
 
@@ -386,12 +403,14 @@ pub mod infrastructure {
                 mod acolhimento_avaliacao_repository;
                 mod acolhimento_operation_repository;
                 mod acolhimento_repository;
+                mod nucleo_patient_history_repository;
                 mod nucleo_patient_repository;
                 mod nucleo_patient_staff_repository;
 
                 pub(crate) use acolhimento_avaliacao_repository::AcolhimentoAvaliacaoRepository;
                 pub(crate) use acolhimento_operation_repository::AcolhimentoOperationRepository;
                 pub(crate) use acolhimento_repository::AcolhimentoRepository;
+                pub(crate) use nucleo_patient_history_repository::NucleoPatientHistoryRepository;
                 pub(crate) use nucleo_patient_repository::NucleoPatientRepository;
                 pub(crate) use nucleo_patient_staff_repository::NucleoPatientStaffRepository;
             }
@@ -408,7 +427,8 @@ pub mod infrastructure {
 
             pub(crate) use acolhimento::{
                 AcolhimentoAvaliacaoRepository, AcolhimentoOperationRepository,
-                AcolhimentoRepository, NucleoPatientRepository, NucleoPatientStaffRepository,
+                AcolhimentoRepository, NucleoPatientHistoryRepository, NucleoPatientRepository,
+                NucleoPatientStaffRepository,
             };
             pub(crate) use messaging::{
                 DeadLetterQuarantineRepository, OutboxEventRepository, ProcessedEventRepository,
@@ -475,6 +495,7 @@ pub mod infrastructure {
             pub(crate) mod acolhimento_anamnese_controller;
             pub(crate) mod acolhimento_avaliacao_controller;
             pub(crate) mod acolhimento_controller;
+            pub(crate) mod acolhimento_history_controller;
             pub(crate) mod acolhimento_operation_controller;
         }
     }
