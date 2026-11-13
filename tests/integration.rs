@@ -1799,4 +1799,49 @@ async fn verify_periods(
         first_close_operation.to_string()
     );
 
+    assert_eq!(
+        period_request(
+            router,
+            "GET",
+            &detail_path,
+            ordinary,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let foreign_path = format!(
+        "/api/v1/acolhimento/paciente/{}/historico/{first_id}",
+        Uuid::new_v4()
+    );
+    assert_eq!(
+        period_request(
+            router,
+            "GET",
+            &foreign_path,
+            admin,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    for suffix in ["?size=0", "?size=101", "?page=-1", "?page=0&page=1"] {
+        assert_eq!(
+            period_request(
+                router,
+                "GET",
+                &format!("{history_path}{suffix}"),
+                admin,
+                Value::Null,
+                Uuid::new_v4()
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
 }
