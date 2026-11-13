@@ -1677,4 +1677,126 @@ async fn verify_periods(
     let invalid_close = client.execute("UPDATE nucleo_patient SET desvinculado_at=CURRENT_TIMESTAMP WHERE patient_id=$1 AND nucleo_id=$2",&[&patient,&nucleus]).await.unwrap_err();
     assert_eq!(invalid_close.code().unwrap().code(), "23514");
     drop(client);
+    let first_id = created["data"]["nucleos"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let second_id = created["data"]["nucleos"][1]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let first_staff_id = created["data"]["nucleos"][0]["nucleoPatientStaff"][0]["id"].clone();
+    let anamnese_path = format!("/api/v1/acolhimento/anamnese/{patient}/{nucleus}");
+    let clinical = json!({"dataAnamnese":"2026-11-13","horaAnamnese":"09:00:00","observacoes":"Historico sintetico"});
+    let mut payload = clinical.clone();
+    payload["nucleoPatientId"] = json!(first_id);
+    assert_eq!(
+        period_request(
+            router,
+            "POST",
+            &anamnese_path,
+            admin,
+            json!({"payload":payload}),
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let header = json!({"patientId":patient,"dataAnamnese":"2026-11-13","horaAnamnese":"08:00:00","observacoes":"Cabecalho preservado"});
+    assert_eq!(
+        period_request(
+            router,
+            "POST",
+            "/api/v1/acolhimento/anamnese/register",
+            admin,
+            header,
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let update_path = format!("/api/v1/acolhimento/update/{patient}");
+    for bad in [json!({}), json!({"nucleoPatient":null})] {
+        assert_eq!(
+            period_request(router, "PUT", &update_path, admin, bad, Uuid::new_v4())
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    for invalid_ids in [json!([Uuid::nil()]), json!([first_id, first_id])] {
+        let invalid = json!({"expectedNucleoPatientIds":invalid_ids,"nucleoPatient":[]});
+        assert_eq!(
+            period_request(router, "PUT", &update_path, admin, invalid, Uuid::new_v4())
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let keep_second = json!({"expectedNucleoPatientIds":[first_id,second_id],"nucleoPatient":[nuclei[1].clone()]});
+    let first_close_operation = Uuid::new_v4();
+    let (status, updated) = period_request(
+        router,
+        "PUT",
+        &update_path,
+        admin,
+        keep_second,
+        first_close_operation,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["data"]["nucleos"].as_array().unwrap().len(), 1);
+    assert_eq!(updated["data"]["nucleos"][0]["id"], second_id);
+    let history_path = format!("/api/v1/acolhimento/paciente/{patient}/historico");
+    let detail_path = format!("{history_path}/{first_id}");
+    let active_detail = format!("{history_path}/{second_id}");
+    assert_eq!(
+        period_request(
+            router,
+            "GET",
+            &active_detail,
+            admin,
+            Value::Null,
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+
+    let (status, history) = period_request(
+        router,
+        "GET",
+        &history_path,
+        admin,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(history["data"]["totalElements"], 1);
+    assert_eq!(history["data"]["content"][0]["nucleoPatientId"], first_id);
+    assert_eq!(history["data"]["content"][0]["possuiAnamnese"], true);
+    assert!(history["data"]["content"][0].get("anamnese").is_none());
+    let (status, detail) = period_request(
+        router,
+        "GET",
+        &detail_path,
+        admin,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["data"]["anamnese"], clinical);
+    assert_eq!(detail["data"]["responsaveis"][0]["id"], first_staff_id);
+    let historical = detail["data"].clone();
+    assert_eq!(historical["desvinculadoPor"], actor.to_string());
+    assert_eq!(
+        historical["desvinculoOperationId"],
+        first_close_operation.to_string()
+    );
+
 }
