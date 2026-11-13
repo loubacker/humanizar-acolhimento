@@ -515,6 +515,43 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         "INSERT INTO nucleo_patient_staff (id, nucleo_patient_id, staff_user_id, role) VALUES ($1, $2, $3, $4)",
         &[&staff_link, &section, &staff, &"COORDENADOR"],
     ).await.unwrap();
+    let upgrade_period = Uuid::new_v4();
+    let upgrade_staff = Uuid::new_v4();
+    client.execute("INSERT INTO nucleo_patient (id,patient_id,nucleo_id,anamnese,created_at,updated_at) VALUES ($1,$2,$3,$4,'2025-01-02 10:00:00','2026-01-02 11:00:00')",&[&upgrade_period,&Uuid::new_v4(),&Uuid::new_v4(),&json!({"observacoes":"Anterior a migracao"})]).await.unwrap();
+    client.execute("INSERT INTO nucleo_patient_staff (id,nucleo_patient_id,staff_user_id,role) VALUES ($1,$2,$3,'COORDENADOR')",&[&upgrade_staff,&upgrade_period,&Uuid::new_v4()]).await.unwrap();
+    let before_upgrade: Value = client
+        .query_one(
+            "SELECT to_jsonb(n) FROM nucleo_patient n WHERE id=$1",
+            &[&upgrade_period],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let before_staff: Value = client
+        .query_one(
+            "SELECT to_jsonb(s) FROM nucleo_patient_staff s WHERE id=$1",
+            &[&upgrade_staff],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    client
+        .batch_execute(include_str!(
+            "../migrations/0005_nucleo_patient_periodos.sql"
+        ))
+        .await
+        .unwrap();
+    let after_upgrade: Value = client.query_one("SELECT to_jsonb(n) - 'desvinculado_at' - 'desvinculado_por' - 'desvinculo_operation_id' FROM nucleo_patient n WHERE id=$1 AND desvinculado_at IS NULL AND desvinculado_por IS NULL AND desvinculo_operation_id IS NULL",&[&upgrade_period]).await.unwrap().get(0);
+    let after_staff: Value = client
+        .query_one(
+            "SELECT to_jsonb(s) FROM nucleo_patient_staff s WHERE id=$1",
+            &[&upgrade_staff],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(before_upgrade, after_upgrade);
+    assert_eq!(before_staff, after_staff);
     drop(client);
     let (router, admin, ordinary, other_admin, actor, task, references, observed_tokens) =
         router(database.clone()).await;
@@ -590,7 +627,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         "SELECT (SELECT count(*) FROM acolhimento) AS headers, (SELECT count(*) FROM nucleo_patient WHERE anamnese IS NOT NULL) AS sections", &[],
     ).await.unwrap();
     assert_eq!(row.get::<_, i64>("headers"), 0);
-    assert_eq!(row.get::<_, i64>("sections"), 0);
+    assert_eq!(row.get::<_, i64>("sections"), 1);
     drop(client);
     let response = router
         .clone()
