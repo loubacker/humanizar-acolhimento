@@ -39,7 +39,7 @@ impl NucleoPatientRepository {
                     created_at,
                     updated_at
                 FROM nucleo_patient
-                WHERE patient_id = $1
+                WHERE patient_id = $1 AND desvinculado_at IS NULL
                 ORDER BY created_at ASC, id ASC
                 "#,
                 &[&patient_id],
@@ -68,7 +68,7 @@ impl NucleoPatientRepository {
                     created_at,
                     updated_at
                 FROM nucleo_patient
-                WHERE id = $1
+                WHERE id = $1 AND desvinculado_at IS NULL
                 "#,
                 &[&id],
             )

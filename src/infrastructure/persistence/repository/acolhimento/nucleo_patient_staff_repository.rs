@@ -32,6 +32,7 @@ impl NucleoPatientStaffRepository {
                     role
                 FROM nucleo_patient_staff
                 WHERE nucleo_patient_id = ANY($1)
+                    AND EXISTS (SELECT 1 FROM nucleo_patient np WHERE np.id = nucleo_patient_id AND np.desvinculado_at IS NULL)
                 ORDER BY id ASC
                 "#,
                 &[&nucleo_patient_ids],
