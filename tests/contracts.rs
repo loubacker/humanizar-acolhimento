@@ -56,3 +56,20 @@ fn empty_update_requires_an_explicit_array() {
     }
 }
 
+#[test]
+fn anamnese_requires_period_identity_without_changing_clinical_json() {
+    let mut payload =
+        json!({"dataAnamnese":"2026-11-13","horaAnamnese":"09:00:00","observacoes":"Sintetico"});
+    assert!(serde_json::from_value::<AnamneseRequestDto>(json!({"payload":payload})).is_err());
+    let id = Uuid::new_v4();
+    payload["nucleoPatientId"] = json!(id);
+    let value: AnamneseRequestDto = serde_json::from_value(json!({"payload":payload})).unwrap();
+    assert_eq!(value.payload.nucleo_patient_id, id);
+    assert!(
+        serde_json::to_value(value.payload.detail)
+            .unwrap()
+            .get("nucleoPatientId")
+            .is_none()
+    );
+    assert!(serde_json::from_value::<AnamneseDeleteRequestDto>(json!({"payload":{}})).is_err());
+}
