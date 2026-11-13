@@ -2004,4 +2004,34 @@ async fn verify_periods(
         .await
         .unwrap();
     drop(client);
+    let close_operation = Uuid::new_v4();
+    let empty = json!({"expectedNucleoPatientIds":[new_id,second_id],"nucleoPatient":[]});
+    for ids in [json!([new_id, second_id]), json!([second_id, new_id])] {
+        let mut replay_payload = empty.clone();
+        replay_payload["expectedNucleoPatientIds"] = ids;
+        let (status, body) = period_request(
+            router,
+            "PUT",
+            &update_path,
+            admin,
+            replay_payload,
+            close_operation,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body["data"]["nucleos"].as_array().unwrap().is_empty());
+    }
+    let (status, history) = period_request(
+        router,
+        "GET",
+        &format!("{history_path}?size=1&page=1"),
+        admin,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(history["data"]["totalElements"], 3);
+    assert_eq!(history["data"]["totalPages"], 3);
+    assert_eq!(history["data"]["content"].as_array().unwrap().len(), 1);
 }
