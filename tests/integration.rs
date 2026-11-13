@@ -1942,4 +1942,66 @@ async fn verify_periods(
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(current["data"]["nucleoPatientId"], new_id);
+    let assessment_id = Uuid::new_v4();
+    references.write().await.insert(assessment_id,json!({"id":assessment_id,"patientId":patient,"tituloAvaliacao":"Preservada","modalidade":"RELATORIO_TECNICO","status":"PENDENTE"}));
+    assert_eq!(
+        period_request(
+            router,
+            "POST",
+            "/api/v1/acolhimento/avaliacoes/register",
+            admin,
+            json!({"patientId":patient,"avaliacaoPacienteId":assessment_id}),
+            Uuid::new_v4()
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let failure_correlation = Uuid::new_v4();
+    let client = database.acquire().await.unwrap();
+    client.batch_execute("CREATE TABLE test_period_outbox_failure (correlation_id UUID PRIMARY KEY); CREATE FUNCTION test_period_outbox_reject() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM test_period_outbox_failure WHERE correlation_id=NEW.correlation_id) THEN RAISE EXCEPTION 'synthetic period outbox failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_period_outbox_reject BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION test_period_outbox_reject();").await.unwrap();
+    client
+        .execute(
+            "INSERT INTO test_period_outbox_failure (correlation_id) VALUES ($1)",
+            &[&failure_correlation],
+        )
+        .await
+        .unwrap();
+    drop(client);
+    let failed = router
+        .clone()
+        .oneshot(request(
+            "PUT",
+            &update_path,
+            Some(admin),
+            failure_correlation,
+            json!({"expectedNucleoPatientIds":[new_id,second_id],"nucleoPatient":[]}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        json_body(failed).await["reasonCode"],
+        "DATABASE_ACCESS_FAILED"
+    );
+    let client = database.acquire().await.unwrap();
+    let live: i64 = client
+        .query_one(
+            "SELECT count(*) FROM nucleo_patient WHERE patient_id=$1 AND desvinculado_at IS NULL",
+            &[&patient],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(live, 2);
+    let closed: i64 = client.query_one("SELECT count(*) FROM nucleo_patient WHERE patient_id=$1 AND desvinculado_at IS NOT NULL",&[&patient]).await.unwrap().get(0);
+    assert_eq!(closed, 1);
+    client
+        .execute(
+            "DELETE FROM test_period_outbox_failure WHERE correlation_id=$1",
+            &[&failure_correlation],
+        )
+        .await
+        .unwrap();
+    drop(client);
 }
