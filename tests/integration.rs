@@ -1378,7 +1378,7 @@ async fn rabbit_retains_dlq_until_quarantine_and_deduplicates_callbacks() {
         .unwrap();
     let patient: Uuid = client
         .query_one(
-            "SELECT patient_id FROM nucleo_patient ORDER BY id LIMIT 1",
+            "SELECT np.patient_id FROM nucleo_patient np WHERE np.desvinculado_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM nucleo_patient active WHERE active.patient_id=np.patient_id AND active.desvinculado_at IS NULL) ORDER BY np.id LIMIT 1",
             &[],
         )
         .await
@@ -1561,6 +1561,20 @@ async fn rabbit_retains_dlq_until_quarantine_and_deduplicates_callbacks() {
     let row = client.query_one("SELECT (SELECT count(*) FROM processed_events WHERE event_id = $1) AS processed, (SELECT count(*) FROM outbox_events WHERE correlation_id = $2) AS callbacks", &[&event_id, &correlation]).await.unwrap();
     assert_eq!(row.get::<_, i64>("processed"), 1);
     assert_eq!(row.get::<_, i64>("callbacks"), 1);
+    let callback = client
+        .query_one(
+            "SELECT routing_key,payload FROM outbox_events WHERE correlation_id=$1",
+            &[&correlation],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        callback.get::<_, String>("routing_key"),
+        "ev.acolhimento.patient.failed.v1"
+    );
+    let payload: Value = serde_json::from_str(&callback.get::<_, String>("payload")).unwrap();
+    assert_eq!(payload["payload"]["reasonCode"], "ACOLHIMENTO_NOT_FOUND");
+    assert_eq!(payload["payload"]["requestEventId"], event_id.to_string());
     drop(client);
     runtime.shutdown().await.unwrap();
     assert!(
