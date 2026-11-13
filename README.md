@@ -92,7 +92,7 @@ As mutações exigem um `Idempotency-Key` UUID por intenção. Após perda de re
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/acolhimento/register` | `201 Created` | Cria o registro de acolhimento do paciente com núcleos e staff |
 | `PUT` | `/api/v1/acolhimento/update/{id}` | `200 OK` | Atualiza o acolhimento, núcleos e equipe técnica do paciente |
-| `DELETE` | `/api/v1/acolhimento/delete/{patientId}` | `200 OK` | Remove o registro de acolhimento e desassocia núcleos do paciente |
+| `DELETE` | `/api/v1/acolhimento/delete/{patientId}` | `200 OK` | Encerra os vínculos ativos do paciente e conserva o histórico clínico |
 | `POST` | `/api/v1/acolhimento/anamnese/register` | `200 OK` | Registra ou atualiza a anamnese geral do paciente |
 | `PUT` | `/api/v1/acolhimento/anamnese/update/{patientId}` | `200 OK` | Atualiza a anamnese técnica do paciente |
 | `POST` | `/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}` | `201 Created` | Registra a anamnese do núcleo |
@@ -215,6 +215,7 @@ Os scripts transacionais são aplicados em ordem, sem execução automática no 
 | [`migrations/0002_dead_letter_quarantine.sql`](migrations/0002_dead_letter_quarantine.sql) | Quarentena durável das mensagens recebidas na DLQ |
 | [`migrations/0003_acolhimento_operations.sql`](migrations/0003_acolhimento_operations.sql) | Registro das intenções e resultados das mutações |
 | [`migrations/0004_avaliacao_titulo_nullable.sql`](migrations/0004_avaliacao_titulo_nullable.sql) | Permite vincular avaliação que ainda não possui título |
+| [`migrations/0005_nucleo_patient_periodos.sql`](migrations/0005_nucleo_patient_periodos.sql) | Conserva períodos encerrados, equipe e anamnese e garante um vínculo ativo por paciente/núcleo |
 
 ## Como Executar Localmente
 
@@ -249,3 +250,14 @@ cargo clippy --all-targets --locked -- -D warnings
 # Suíte de testes unitários
 cargo test --all-targets --locked
 ```
+
+
+## Desvinculação e períodos de vínculo
+
+A atualização aceita explicitamente `nucleoPatient: []` para encerrar todos os vínculos ativos. O campo é obrigatório no PUT, assim como `expectedNucleoPatientIds`, que deve conter os identificadores dos vínculos ativos carregados pela tela. Uma mudança de período ocorrida em outra sessão retorna `409 ACOLHIMENTO_CONCURRENT_CHANGE`. A criação continua exigindo pelo menos um núcleo com responsável.
+
+A migração `migrations/0005_nucleo_patient_periodos.sql` conserva os vínculos existentes como ativos e permite apenas um período ativo por paciente e núcleo. A desvinculação registra data, ator e operação, preservando equipe e anamnese. Uma nova vinculação abre outro período com novo UUID e anamnese vazia. O DELETE geral também encerra somente os períodos ativos.
+
+O histórico administrativo é consultado por `GET /api/v1/acolhimento/paciente/{patientId}/historico?page=0&size=20` e `GET /api/v1/acolhimento/paciente/{patientId}/historico/{nucleoPatientId}`. A lista admite tamanho de 1 a 100, retorna paginação no envelope e não inclui os corpos clínicos. O detalhe exige conjuntamente paciente e período encerrado. As operações de anamnese por paciente/núcleo exigem `payload.nucleoPatientId`; período encerrado ou diferente retorna `409 NUCLEO_PATIENT_PERIOD_MISMATCH`.
+
+Para publicar, suspenda as mutações do Acolhimento, aplique a migração 0005 após as anteriores, publique as versões coordenadas de Acolhimento, Gateway e Dashboard e valide os contratos antes de reabrir as escritas. Uma instância antiga executa exclusão física e pode destruir os períodos históricos. Depois do primeiro encerramento, o rollback exige um procedimento que preserve os períodos e o schema, pois o simples retorno ao binário antigo é incompatível. A migração não é executada automaticamente no startup.
