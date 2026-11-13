@@ -95,74 +95,110 @@ impl NucleoPatientRepository {
         AcolhimentoOperationRepository::lock(&transaction, operation).await?;
         Self::lock_patient(&transaction, patient_id).await?;
         Self::verify_snapshot(&transaction, patient_id, expected_nucleos, expected_staff).await?;
+        let desired_ids: Vec<Uuid> = entries.iter().map(|(nucleo, _)| nucleo.id).collect();
         transaction
             .execute(
                 r#"
-                DELETE FROM nucleo_patient
+                UPDATE nucleo_patient
+                SET
+                    desvinculado_at = CURRENT_TIMESTAMP,
+                    desvinculado_por = $2,
+                    desvinculo_operation_id = $3
                 WHERE patient_id = $1
+                    AND desvinculado_at IS NULL
+                    AND NOT (id = ANY($4))
                 "#,
-                &[&patient_id],
+                &[
+                    &patient_id,
+                    &operation.actor_id,
+                    &operation.id,
+                    &desired_ids,
+                ],
             )
             .await
             .map_err(database_error)?;
         let mut saved_entries = Vec::with_capacity(entries.len());
-        for (nucleo_entity, staff_members) in entries {
-            let np_row = transaction
-                .query_one(
+        for (nucleo, staff_members) in entries {
+            let existing = transaction
+                .query_opt(
                     r#"
-                    INSERT INTO nucleo_patient (
-                        id,
-                        patient_id,
-                        nucleo_id,
-                        anamnese,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING
-                        id,
-                        patient_id,
-                        nucleo_id,
-                        anamnese,
-                        created_at,
-                        updated_at
-                    "#,
-                    &[
-                        &nucleo_entity.id,
-                        &nucleo_entity.patient_id,
-                        &nucleo_entity.nucleo_id,
-                        &nucleo_entity.anamnese,
-                        &nucleo_entity.created_at,
-                        &nucleo_entity.updated_at,
-                    ],
+                SELECT id
+                    FROM nucleo_patient
+                    WHERE id = $1
+                        AND patient_id = $2
+                        AND desvinculado_at IS NULL
+                "#,
+                    &[&nucleo.id, &patient_id],
                 )
                 .await
                 .map_err(database_error)?;
-            let saved_np = NucleoPatientEntity::from_row(&np_row).map_err(database_error)?;
-            let mut saved_staff = Vec::with_capacity(staff_members.len());
-            for staff in staff_members {
-                let staff_row = transaction
+            let row = if existing.is_some() {
+                transaction
                     .query_one(
                         r#"
-                        INSERT INTO nucleo_patient_staff (
-                            id,
-                            nucleo_patient_id,
-                            staff_user_id,
-                            role
+                UPDATE nucleo_patient
+                        SET updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo'
+                        WHERE id = $1
+                            AND patient_id = $2
+                            AND desvinculado_at IS NULL
+                        RETURNING id, patient_id, nucleo_id, anamnese, created_at, updated_at
+                "#,
+                        &[&nucleo.id, &patient_id],
+                    )
+                    .await
+            } else {
+                transaction
+                    .query_one(
+                        r#"
+                INSERT INTO nucleo_patient (
+                            id, patient_id, nucleo_id, anamnese, created_at, updated_at
                         )
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        RETURNING id, patient_id, nucleo_id, anamnese, created_at, updated_at
+                "#,
+                        &[
+                            &nucleo.id,
+                            &nucleo.patient_id,
+                            &nucleo.nucleo_id,
+                            &nucleo.anamnese,
+                            &nucleo.created_at,
+                            &nucleo.updated_at,
+                        ],
+                    )
+                    .await
+            }
+            .map_err(database_error)?;
+            let saved_np = NucleoPatientEntity::from_row(&row).map_err(database_error)?;
+            let desired_staff: Vec<Uuid> = staff_members.iter().map(|staff| staff.id).collect();
+            transaction
+                .execute(
+                    r#"
+                DELETE FROM nucleo_patient_staff
+                    WHERE nucleo_patient_id = $1
+                        AND NOT (id = ANY($2))
+                "#,
+                    &[&saved_np.id, &desired_staff],
+                )
+                .await
+                .map_err(database_error)?;
+            let mut saved_staff = Vec::with_capacity(staff_members.len());
+            for staff in staff_members {
+                let row = transaction
+                    .query_one(
+                        r#"
+                INSERT INTO nucleo_patient_staff (id, nucleo_patient_id, staff_user_id, role)
                         VALUES ($1, $2, $3, $4)
-                        RETURNING
-                            id,
-                            nucleo_patient_id,
-                            staff_user_id,
-                            role
-                        "#,
+                        ON CONFLICT (id) DO UPDATE
+                        SET role = EXCLUDED.role
+                        WHERE nucleo_patient_staff.nucleo_patient_id = EXCLUDED.nucleo_patient_id
+                            AND nucleo_patient_staff.staff_user_id = EXCLUDED.staff_user_id
+                        RETURNING id, nucleo_patient_id, staff_user_id, role
+                "#,
                         &[&staff.id, &saved_np.id, &staff.staff_user_id, &staff.role],
                     )
                     .await
                     .map_err(database_error)?;
-                saved_staff
-                    .push(NucleoPatientStaffEntity::from_row(&staff_row).map_err(database_error)?);
+                saved_staff.push(NucleoPatientStaffEntity::from_row(&row).map_err(database_error)?);
             }
             saved_entries.push((saved_np, saved_staff));
         }
@@ -353,7 +389,7 @@ impl NucleoPatientRepository {
         mut expected_staff: Vec<NucleoPatientStaffEntity>,
     ) -> Result<(), AcolhimentoException> {
         let rows = transaction.query(
-            "SELECT id, patient_id, nucleo_id, anamnese, created_at, updated_at FROM nucleo_patient WHERE patient_id = $1 ORDER BY id FOR UPDATE",
+            "SELECT id, patient_id, nucleo_id, anamnese, created_at, updated_at FROM nucleo_patient WHERE patient_id = $1 AND desvinculado_at IS NULL ORDER BY id FOR UPDATE",
             &[&patient_id],
         ).await.map_err(database_error)?;
         let current_nucleos = rows
@@ -362,7 +398,7 @@ impl NucleoPatientRepository {
             .collect::<Result<Vec<_>, _>>()
             .map_err(database_error)?;
         let rows = transaction.query(
-            "SELECT staff.id, staff.nucleo_patient_id, staff.staff_user_id, staff.role FROM nucleo_patient_staff staff JOIN nucleo_patient np ON np.id = staff.nucleo_patient_id WHERE np.patient_id = $1 ORDER BY staff.id",
+            "SELECT staff.id, staff.nucleo_patient_id, staff.staff_user_id, staff.role FROM nucleo_patient_staff staff JOIN nucleo_patient np ON np.id = staff.nucleo_patient_id WHERE np.patient_id = $1 AND np.desvinculado_at IS NULL ORDER BY staff.id",
             &[&patient_id],
         ).await.map_err(database_error)?;
         let current_staff = rows
