@@ -38,7 +38,7 @@ impl ProcessedEventRepository {
 
         let has_acolhimento: bool = transaction
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM nucleo_patient WHERE patient_id = $1)",
+                "SELECT EXISTS(SELECT 1 FROM nucleo_patient WHERE patient_id = $1 AND desvinculado_at IS NULL)",
                 &[&command.patient_id],
             )
             .await
