@@ -187,20 +187,25 @@ fn request_hash(
     } else {
         serde_json::from_slice(bytes)?
     };
-    let business = if matched == "/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}"
-        && action != OperationAction::AnamneseExcluir
-    {
+    let business = if matched == "/api/v1/acolhimento/anamnese/{patientId}/{nucleoId}" {
         value.get("payload").unwrap_or(&value)
     } else {
         &value
     };
     let canonical_business = if matches!(
         action,
-        OperationAction::AcolhimentoExcluir
-            | OperationAction::AnamneseExcluir
-            | OperationAction::AvaliacaoDesvincular
+        OperationAction::AcolhimentoExcluir | OperationAction::AvaliacaoDesvincular
     ) {
         serde_json::Value::Null
+    } else if action == OperationAction::AcolhimentoAtualizar {
+        let mut canonical = business.clone();
+        if let Some(ids) = canonical
+            .get_mut("expectedNucleoPatientIds")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            ids.sort_by_key(|id| id.as_str().unwrap_or_default().to_owned());
+        }
+        canonical
     } else if action == OperationAction::AvaliacaoVincular {
         serde_json::json!({
             "patientId": business.get("patientId"),
