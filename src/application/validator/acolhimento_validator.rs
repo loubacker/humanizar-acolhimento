@@ -18,6 +18,19 @@ impl AcolhimentoValidator {
     }
 
     pub fn validate_update(dto: &AcolhimentoUpdateDto) -> Result<(), AcolhimentoException> {
+        let mut expected = HashSet::new();
+        if dto
+            .expected_nucleo_patient_ids
+            .iter()
+            .any(|id| id.is_nil() || !expected.insert(*id))
+        {
+            return Err(AcolhimentoException::new(
+                ReasonCode::RequestParameterInvalid,
+            ));
+        }
+        if dto.nucleo_patient.is_empty() {
+            return Ok(());
+        }
         Self::validate_nucleos(&dto.nucleo_patient)
     }
 

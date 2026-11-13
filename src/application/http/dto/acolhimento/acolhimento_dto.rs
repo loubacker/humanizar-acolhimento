@@ -30,7 +30,7 @@ pub struct AcolhimentoCreateDto {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcolhimentoUpdateDto {
-    #[serde(default)]
+    pub expected_nucleo_patient_ids: Vec<Uuid>,
     pub nucleo_patient: Vec<NucleoPatientDto>,
 }
 

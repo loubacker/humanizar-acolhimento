@@ -178,6 +178,13 @@ impl AcolhimentoService {
             .nucleo_patient_port
             .find_by_patient_id(patient_id)
             .await?;
+        let current_ids: HashSet<Uuid> = old_nucleos.iter().map(NucleoPatient::id).collect();
+        let expected_ids: HashSet<Uuid> = dto.expected_nucleo_patient_ids.iter().copied().collect();
+        if current_ids != expected_ids {
+            return Err(AcolhimentoException::new(
+                ReasonCode::AcolhimentoConcurrentChange,
+            ));
+        }
         if old_nucleos.is_empty() {
             return Err(AcolhimentoException::new(ReasonCode::AcolhimentoNotFound));
         }
