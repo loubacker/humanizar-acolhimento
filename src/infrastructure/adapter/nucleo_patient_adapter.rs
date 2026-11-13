@@ -184,6 +184,7 @@ impl NucleoPatientPort for NucleoPatientAdapter {
         &self,
         patient_id: Uuid,
         nucleo_id: Uuid,
+        nucleo_patient_id: Uuid,
         operation: AnamneseOperation,
         anamnese: Option<Value>,
         operation_identity: &OperationIdentity,
@@ -192,6 +193,7 @@ impl NucleoPatientPort for NucleoPatientAdapter {
             .change_nucleo_anamnese(
                 patient_id,
                 nucleo_id,
+                nucleo_patient_id,
                 operation,
                 anamnese,
                 operation_identity,

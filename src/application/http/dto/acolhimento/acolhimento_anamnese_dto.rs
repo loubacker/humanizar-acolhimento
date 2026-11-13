@@ -13,7 +13,34 @@ pub struct AnamneseDetailDto {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AnamneseRequestDto {
-    pub payload: AnamneseDetailDto,
+    pub payload: AnamnesePeriodPayloadDto,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnamnesePeriodPayloadDto {
+    pub nucleo_patient_id: Uuid,
+    #[serde(flatten)]
+    pub detail: AnamneseDetailDto,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AnamneseDeleteRequestDto {
+    pub payload: AnamnesePeriodIdentityDto,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnamnesePeriodIdentityDto {
+    pub nucleo_patient_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnamneseRetrieveDto {
+    pub nucleo_patient_id: Uuid,
+    #[serde(flatten)]
+    pub detail: AnamneseDetailDto,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,6 +1,6 @@
 use crate::application::http::dto::{
-    AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto, AnamneseDetailDto,
-    AnamneseRequestDto,
+    AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto, AnamneseDeleteRequestDto,
+    AnamneseRequestDto, AnamneseRetrieveDto,
 };
 use crate::domain::model::{AnamneseOperation, OperationIdentity};
 use crate::infrastructure::controller::dto::SuccessResponseDto;
@@ -16,7 +16,7 @@ pub async fn find_by_patient_and_nucleo(
     State(state): State<ApplicationState>,
     ApiPath((patient_id, nucleo_id)): ApiPath<(Uuid, Uuid)>,
     Extension(context): Extension<RequestContext>,
-) -> Result<SuccessResponseDto<AnamneseDetailDto>, HttpError> {
+) -> Result<SuccessResponseDto<AnamneseRetrieveDto>, HttpError> {
     let data = state
         .acolhimento_anamnese_service
         .find_by_patient_and_nucleo(patient_id, nucleo_id)
@@ -42,8 +42,9 @@ pub async fn create_for_nucleo(
         .change_nucleo_anamnese(
             patient_id,
             nucleo_id,
+            request.payload.nucleo_patient_id,
             AnamneseOperation::Create,
-            Some(request.payload),
+            Some(request.payload.detail),
             &operation,
         )
         .await
@@ -71,8 +72,9 @@ pub async fn update_for_nucleo(
         .change_nucleo_anamnese(
             patient_id,
             nucleo_id,
+            request.payload.nucleo_patient_id,
             AnamneseOperation::Update,
-            Some(request.payload),
+            Some(request.payload.detail),
             &operation,
         )
         .await
@@ -90,12 +92,14 @@ pub async fn delete_for_nucleo(
     ApiPath((patient_id, nucleo_id)): ApiPath<(Uuid, Uuid)>,
     Extension(context): Extension<RequestContext>,
     Extension(operation): Extension<OperationIdentity>,
+    ApiJson(request): ApiJson<AnamneseDeleteRequestDto>,
 ) -> Result<SuccessResponseDto<()>, HttpError> {
     state
         .acolhimento_anamnese_service
         .change_nucleo_anamnese(
             patient_id,
             nucleo_id,
+            request.payload.nucleo_patient_id,
             AnamneseOperation::Delete,
             None,
             &operation,

@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::application::http::dto::{
     AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto, AnamneseDetailDto,
-    AnamneseItemDto,
+    AnamneseItemDto, AnamneseRetrieveDto,
 };
 use crate::application::http::mapper::AcolhimentoAnamneseMapper;
 use crate::application::validator::required_uuid;
@@ -70,7 +70,7 @@ impl AcolhimentoAnamneseService {
         &self,
         patient_id: Uuid,
         nucleo_id: Uuid,
-    ) -> Result<AnamneseDetailDto, AcolhimentoException> {
+    ) -> Result<AnamneseRetrieveDto, AcolhimentoException> {
         let nucleo = self
             .nucleo_patient_port
             .find_by_patient_id(patient_id)
@@ -82,8 +82,12 @@ impl AcolhimentoAnamneseService {
             .anamnese()
             .cloned()
             .ok_or_else(|| AcolhimentoException::new(ReasonCode::AnamneseNotFound))?;
-        serde_json::from_value(value).map_err(|error| {
+        let detail = serde_json::from_value(value).map_err(|error| {
             AcolhimentoException::with_source(ReasonCode::PersistenceFailure, error)
+        })?;
+        Ok(AnamneseRetrieveDto {
+            nucleo_patient_id: nucleo.id(),
+            detail,
         })
     }
 
@@ -91,10 +95,16 @@ impl AcolhimentoAnamneseService {
         &self,
         patient_id: Uuid,
         nucleo_id: Uuid,
+        nucleo_patient_id: Uuid,
         operation: AnamneseOperation,
         detail: Option<AnamneseDetailDto>,
         operation_identity: &OperationIdentity,
     ) -> Result<(), AcolhimentoException> {
+        if nucleo_patient_id.is_nil() {
+            return Err(AcolhimentoException::new(
+                ReasonCode::RequestParameterInvalid,
+            ));
+        }
         let anamnese = detail
             .map(serde_json::to_value)
             .transpose()
@@ -105,6 +115,7 @@ impl AcolhimentoAnamneseService {
             .change_nucleo_anamnese(
                 patient_id,
                 nucleo_id,
+                nucleo_patient_id,
                 operation,
                 anamnese,
                 operation_identity,

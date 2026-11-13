@@ -38,6 +38,7 @@ pub trait NucleoPatientPort: Send + Sync {
         &self,
         patient_id: Uuid,
         nucleo_id: Uuid,
+        nucleo_patient_id: Uuid,
         operation: AnamneseOperation,
         anamnese: Option<Value>,
         operation_identity: &OperationIdentity,
