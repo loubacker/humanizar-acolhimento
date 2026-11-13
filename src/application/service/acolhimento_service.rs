@@ -153,9 +153,10 @@ impl AcolhimentoService {
             staff_by_np.insert(n.id(), staff_vec);
         }
 
+        let acolhimento = self.acolhimento_port.find_by_patient_id(patient_id).await?;
         Ok(AcolhimentoMapper::to_dto(
             patient_id,
-            None,
+            acolhimento.as_ref(),
             &saved_nucleos,
             &staff_by_np,
         ))

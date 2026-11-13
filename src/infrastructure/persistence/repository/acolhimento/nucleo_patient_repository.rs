@@ -302,23 +302,21 @@ impl NucleoPatientRepository {
         let affected = transaction
             .execute(
                 r#"
-                DELETE FROM nucleo_patient
+                UPDATE nucleo_patient
+                SET
+                    desvinculado_at = CURRENT_TIMESTAMP,
+                    desvinculado_por = $2,
+                    desvinculo_operation_id = $3
                 WHERE patient_id = $1
+                    AND desvinculado_at IS NULL
                 "#,
-                &[&patient_id],
+                &[&patient_id, &operation.actor_id, &operation.id],
             )
             .await
             .map_err(database_error)?;
         if affected == 0 {
             return Err(AcolhimentoException::new(ReasonCode::AcolhimentoNotFound));
         }
-        transaction
-            .execute(
-                "DELETE FROM acolhimento WHERE patient_id = $1",
-                &[&patient_id],
-            )
-            .await
-            .map_err(database_error)?;
         Self::insert_outbox_events(&transaction, outbox_events).await?;
         AcolhimentoOperationRepository::complete(&transaction, operation).await?;
         transaction.commit().await.map_err(database_error)
