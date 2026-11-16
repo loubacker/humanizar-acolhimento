@@ -312,3 +312,50 @@ async fn zero_total_returns_an_empty_array_after_one_valid_page() {
     assert_eq!(fixture.observed().await.len(), 1);
 }
 
+#[tokio::test]
+async fn detail_sends_patient_context_and_validates_both_returned_ids() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let id = Uuid::from_u128(1);
+    let fixture = HttpFixture::start(vec![reply(detail(patient, correlation))]).await;
+    let result = fixture
+        .adapter
+        .find_by_id(patient, id, &access(), correlation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.id, id);
+    assert_eq!(result.patient_id, patient);
+    assert!(result.titulo.is_none());
+    let observed = fixture.observed().await;
+    assert_eq!(
+        observed[0].uri,
+        format!("/api/avaliacao/pacientes/{id}?patientId={patient}")
+    );
+    assert_eq!(
+        observed[0].authorization,
+        "Bearer synthetic-delegated-token"
+    );
+    for (field, invalid) in [
+        ("id", json!(Uuid::new_v4())),
+        ("patientId", json!(Uuid::new_v4())),
+        ("id", json!(Uuid::nil())),
+        ("patientId", json!(Uuid::nil())),
+    ] {
+        let mut body = detail(patient, correlation);
+        body["data"][field] = invalid;
+        let fixture = HttpFixture::start(vec![reply(body)]).await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_id(patient, id, &access(), correlation)
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            ReasonCode::IntegrationFailure
+        );
+        assert_eq!(fixture.observed().await.len(), 1);
+    }
+}
+
