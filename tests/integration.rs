@@ -921,10 +921,10 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         ))
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(
         json_body(response).await["reasonCode"],
-        "AVALIACAO_PATIENT_MISMATCH"
+        "AVALIACAO_PACIENTE_NOT_FOUND"
     );
     references.write().await.insert(
         assessment_id,
