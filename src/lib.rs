@@ -179,6 +179,7 @@ pub mod application {
                 mod acolhimento_dto;
                 mod acolhimento_history_dto;
                 mod avaliacao_paciente_reference_dto;
+                mod avaliacao_paciente_reference_page_dto;
 
                 pub use acolhimento_anamnese_dto::{
                     AcolhimentoAnamneseCreateUpdateDto, AcolhimentoAnamneseRetrieveDto,
@@ -203,6 +204,7 @@ pub mod application {
                     AvaliacaoPacienteErrorEnvelopeDto, AvaliacaoPacienteReferenceDto,
                     AvaliacaoPacienteReferenceEnvelopeDto,
                 };
+                pub use avaliacao_paciente_reference_page_dto::AvaliacaoPacienteReferencePageDto;
             }
 
             pub use acolhimento::{
@@ -213,8 +215,8 @@ pub mod application {
                 AnamnesePeriodIdentityDto, AnamnesePeriodPayloadDto, AnamneseRequestDto,
                 AnamneseRetrieveDto, AnamneseSectionDto, AvaliacaoDisponivelDto,
                 AvaliacaoPacienteErrorEnvelopeDto, AvaliacaoPacienteReferenceDto,
-                AvaliacaoPacienteReferenceEnvelopeDto, NucleoPatientDto,
-                NucleoPatientHistoryDetailDto, NucleoPatientHistoryDto,
+                AvaliacaoPacienteReferenceEnvelopeDto, AvaliacaoPacienteReferencePageDto,
+                NucleoPatientDto, NucleoPatientHistoryDetailDto, NucleoPatientHistoryDto,
                 NucleoPatientHistoryPageDto, NucleoPatientHistoryStaffDto,
                 NucleoPatientRetrieveDto, NucleoStaffDto,
             };
@@ -244,9 +246,11 @@ pub mod application {
 
     pub(crate) mod validator {
         mod acolhimento_validator;
+        mod avaliacao_paciente_reference_validator;
         mod field_validator;
 
         pub(crate) use acolhimento_validator::AcolhimentoValidator;
+        pub(crate) use avaliacao_paciente_reference_validator::AvaliacaoPacienteReferenceValidator;
         pub(crate) use field_validator::{required, required_uuid};
     }
 
@@ -264,6 +268,8 @@ pub mod application {
 // ===== Infrastructure =====
 pub mod infrastructure {
     pub mod server;
+
+    pub use adapter::AvaliacaoPacienteReferenceAdapter;
 
     pub mod messaging {
         mod messaging_services;
@@ -354,7 +360,7 @@ pub mod infrastructure {
         pub(crate) use acolhimento_adapter::AcolhimentoAdapter;
         pub(crate) use acolhimento_avaliacao_adapter::AcolhimentoAvaliacaoAdapter;
         pub(crate) use acolhimento_operation_adapter::AcolhimentoOperationAdapter;
-        pub(crate) use avaliacao_paciente_reference_adapter::AvaliacaoPacienteReferenceAdapter;
+        pub use avaliacao_paciente_reference_adapter::AvaliacaoPacienteReferenceAdapter;
         pub(crate) use dead_letter_quarantine_adapter::DeadLetterQuarantineAdapter;
         pub(crate) use nucleo_patient_adapter::NucleoPatientAdapter;
         pub(crate) use nucleo_patient_staff_adapter::NucleoPatientStaffAdapter;
