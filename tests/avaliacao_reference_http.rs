@@ -628,3 +628,64 @@ async fn dependency_diagnostics_include_bounded_context_without_bearer_or_clinic
     assert!(!diagnostics.contains("/api/avaliacao/"));
 }
 
+#[tokio::test]
+async fn the_fifteen_second_budget_includes_all_pages_and_streamed_body_reads() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let mut first = reply(page(patient, correlation, 0, 21));
+    first.body_delay = Duration::from_secs(8);
+    let mut second = reply(page(patient, correlation, 1, 21));
+    second.body_delay = Duration::from_secs(8);
+    let fixture =
+        HttpFixture::start(vec![reply(detail(patient, correlation)), first, second]).await;
+    fixture
+        .adapter
+        .find_by_id(patient, Uuid::from_u128(1), &access(), correlation)
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::task::yield_now().await;
+    tokio::time::pause();
+    let _yield_guard = YieldGuard(tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    }));
+    let adapter = fixture.adapter.clone();
+    let started = Instant::now();
+    let captured = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(DiagnosticCapture {
+        correlation_id: correlation.to_string(),
+        captured: captured.clone(),
+    });
+    let query = tokio::spawn(
+        async move {
+            adapter
+                .find_by_patient_id(patient, &access(), correlation)
+                .await
+        }
+        .with_subscriber(subscriber),
+    );
+    assert!(fixture.wait_requests(2).await);
+    tokio::time::advance(Duration::from_millis(8001)).await;
+    assert!(
+        fixture.wait_requests(3).await,
+        "second page absent: finished={}, elapsed={:?}, diagnostics={:?}",
+        query.is_finished(),
+        started.elapsed(),
+        captured.lock().unwrap()
+    );
+    tokio::time::advance(Duration::from_millis(5999)).await;
+    assert!(!query.is_finished());
+    tokio::time::advance(Duration::from_millis(1001)).await;
+    assert_eq!(
+        query.await.unwrap().err().unwrap().reason_code(),
+        ReasonCode::IntegrationFailure
+    );
+    assert_eq!(started.elapsed(), Duration::from_millis(15001));
+    let observed = fixture.observed().await;
+    assert_eq!(observed.len(), 3);
+    assert!(observed[0].uri.contains("?patientId="));
+    assert!(observed[1].uri.ends_with("?page=0&size=20"));
+    assert!(observed[2].uri.ends_with("?page=1&size=20"));
+}
