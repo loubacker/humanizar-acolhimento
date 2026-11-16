@@ -6,7 +6,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use axum::{
     Json, Router,
     body::Body,
-    extract::Path,
+    extract::{Path, Query},
     http::{HeaderMap, Request, Response, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -76,6 +76,23 @@ async fn database() -> DatabaseConfig {
         .unwrap()
 }
 
+fn reference_fixture_response(
+    status: StatusCode,
+    headers: &HeaderMap,
+    body: Value,
+) -> axum::response::Response {
+    let correlation = headers
+        .get("x-correlation-id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    (
+        status,
+        [("X-Correlation-ID", correlation.to_owned())],
+        Json(body),
+    )
+        .into_response()
+}
+
 async fn router(
     database: DatabaseConfig,
 ) -> (
@@ -106,48 +123,56 @@ async fn router(
         axum::serve(
             listener,
             Router::new().route("/jwks", get(move || async move { Json(jwks) }))
-                .route("/api/avaliacao/pacientes/paciente/{patientId}", get(move |Path(patient_id): Path<Uuid>, headers: HeaderMap| {
+                .route("/api/avaliacao/pacientes/paciente/{patientId}", get(move |Path(patient_id): Path<Uuid>, Query(query): Query<HashMap<String,String>>, headers: HeaderMap| {
                     let references = fixture_list_references.clone();
                     let tokens = fixture_list_tokens.clone();
                     async move {
                         let token = headers.get("authorization").and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
                         tokens.lock().await.push(token);
-                        let values: Vec<Value> = references.read().await.values()
+                        let mut values: Vec<Value> = references.read().await.values()
                             .filter(|value| value["patientId"] == patient_id.to_string()).cloned().collect();
                         if values.iter().any(|value| value["fixtureListNotFound"] == true) {
-                            return (StatusCode::NOT_FOUND, Json(json!({
+                            return reference_fixture_response(StatusCode::NOT_FOUND, &headers, json!({
                                 "status":404, "reasonCode":"ROUTE_NOT_FOUND",
                                 "correlationId":headers.get("x-correlation-id").and_then(|value| value.to_str().ok()).unwrap_or_default()
-                            }))).into_response();
+                            }));
                         }
-                        Json(json!({
+                        values.sort_by(|left,right|left["id"].as_str().cmp(&right["id"].as_str()));
+                        let page=query.get("page").and_then(|value|value.parse::<usize>().ok()).unwrap_or(0);
+                        let size=query.get("size").and_then(|value|value.parse::<usize>().ok()).unwrap_or(20);
+                        let total=values.len();
+                        let items:Vec<_>=values.into_iter().skip(page*size).take(size).collect();
+                        reference_fixture_response(StatusCode::OK, &headers, json!({
                             "code":"AVALIACOES_PATIENT_LISTED", "success":true,
                             "correlationId":headers.get("x-correlation-id").and_then(|value| value.to_str().ok()).unwrap_or_default(),
-                            "data":values
-                        })).into_response()
+                            "data":{"items":items,"total":total,"page":page,"size":size}
+                        }))
                     }
                 }))
-                .route("/api/avaliacao/pacientes/{id}", get(move |Path(id): Path<Uuid>, headers: HeaderMap| {
+                .route("/api/avaliacao/pacientes/{id}", get(move |Path(id): Path<Uuid>, Query(query): Query<HashMap<String,String>>, headers: HeaderMap| {
                     let references = fixture_references.clone();
                     let tokens = fixture_tokens.clone();
                     async move {
                         let token = headers.get("authorization").and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
                         tokens.lock().await.push(token);
                         let value = references.read().await.get(&id).cloned();
+                        let Some(patient_id)=query.get("patientId").and_then(|value|Uuid::parse_str(value).ok()) else {
+                            return reference_fixture_response(StatusCode::BAD_REQUEST, &headers, json!({"status":400,"reasonCode":"REQUEST_PARAMETER_INVALID","correlationId":headers.get("x-correlation-id").and_then(|value|value.to_str().ok()).unwrap_or_default()}));
+                        };
                         match value {
-                            Some(data) if data["fixtureRouteNotFound"] == true => (StatusCode::NOT_FOUND, Json(json!({
+                            Some(data) if data["fixtureRouteNotFound"] == true => reference_fixture_response(StatusCode::NOT_FOUND, &headers, json!({
                                 "status":404, "reasonCode":"ROUTE_NOT_FOUND",
                                 "correlationId":headers.get("x-correlation-id").and_then(|value| value.to_str().ok()).unwrap_or_default()
-                            }))).into_response(),
-                            Some(data) => (StatusCode::OK, Json(json!({
+                            })),
+                            Some(data) if data["patientId"]==patient_id.to_string() => reference_fixture_response(StatusCode::OK, &headers, json!({
                                 "code":"AVALIACAO_FOUND", "success":true,
                                 "correlationId":headers.get("x-correlation-id").and_then(|value| value.to_str().ok()).unwrap_or_default(),
                                 "data":data
-                            }))).into_response(),
-                            None => (StatusCode::NOT_FOUND, Json(json!({
+                            })),
+                            _ => reference_fixture_response(StatusCode::NOT_FOUND, &headers, json!({
                                 "status":404, "reasonCode":"AVALIACAO_NOT_FOUND",
                                 "correlationId":headers.get("x-correlation-id").and_then(|value| value.to_str().ok()).unwrap_or_default()
-                            }))).into_response(),
+                            })),
                         }
                     }
                 })),
