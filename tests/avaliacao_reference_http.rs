@@ -556,3 +556,27 @@ async fn response_status_mime_correlations_shape_and_one_mebibyte_limit_are_enfo
     }
 }
 
+#[tokio::test]
+async fn authorization_failures_preserve_their_public_meaning_without_retry() {
+    for (status, reason) in [
+        (StatusCode::UNAUTHORIZED, ReasonCode::AuthenticationRequired),
+        (StatusCode::FORBIDDEN, ReasonCode::AuthorizationDenied),
+    ] {
+        let mut response = reply(json!({}));
+        response.status = status;
+        response.correlation = CorrelationHeader::Omit;
+        let fixture = HttpFixture::start(vec![response]).await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_patient_id(Uuid::new_v4(), &access(), Uuid::new_v4())
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            reason
+        );
+        assert_eq!(fixture.observed().await.len(), 1);
+    }
+}
+
