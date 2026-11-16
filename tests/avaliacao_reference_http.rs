@@ -437,3 +437,62 @@ async fn a_failure_after_a_valid_first_page_never_returns_partial_data_or_retrie
     }
 }
 
+#[tokio::test]
+async fn page_metadata_foreign_patients_and_duplicate_ids_are_rejected_across_pages() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let mut wrong_page = page(patient, correlation, 1, 21);
+    wrong_page["data"]["page"] = json!(0);
+    let mut wrong_size = page(patient, correlation, 1, 21);
+    wrong_size["data"]["size"] = json!(100);
+    let mut changed_total = page(patient, correlation, 1, 21);
+    changed_total["data"]["total"] = json!(22);
+    let mut empty_before_total = page(patient, correlation, 1, 21);
+    empty_before_total["data"]["items"] = json!([]);
+    let mut duplicate = page(patient, correlation, 1, 21);
+    duplicate["data"]["items"][0] = reference(patient, 0);
+    let mut foreign = page(patient, correlation, 1, 21);
+    foreign["data"]["items"][0]["patientId"] = json!(Uuid::new_v4());
+    let mut nil_id = page(patient, correlation, 1, 21);
+    nil_id["data"]["items"][0]["id"] = json!(Uuid::nil());
+    for second in [
+        wrong_page,
+        wrong_size,
+        changed_total,
+        empty_before_total,
+        duplicate,
+        foreign,
+        nil_id,
+    ] {
+        let fixture = HttpFixture::start(vec![
+            reply(page(patient, correlation, 0, 21)),
+            reply(second),
+        ])
+        .await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_patient_id(patient, &access(), correlation)
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            ReasonCode::IntegrationFailure
+        );
+        assert_eq!(fixture.observed().await.len(), 2);
+    }
+    let mut duplicate_page = page(patient, correlation, 0, 2);
+    duplicate_page["data"]["items"][1] = reference(patient, 0);
+    let fixture = HttpFixture::start(vec![reply(duplicate_page)]).await;
+    assert_eq!(
+        fixture
+            .adapter
+            .find_by_patient_id(patient, &access(), correlation)
+            .await
+            .err()
+            .unwrap()
+            .reason_code(),
+        ReasonCode::IntegrationFailure
+    );
+}
+
