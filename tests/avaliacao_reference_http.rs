@@ -496,3 +496,63 @@ async fn page_metadata_foreign_patients_and_duplicate_ids_are_rejected_across_pa
     );
 }
 
+#[tokio::test]
+async fn response_status_mime_correlations_shape_and_one_mebibyte_limit_are_enforced() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let mut failures = Vec::new();
+    for status in [
+        StatusCode::CREATED,
+        StatusCode::ACCEPTED,
+        StatusCode::NO_CONTENT,
+    ] {
+        let mut response = reply(page(patient, correlation, 0, 0));
+        response.status = status;
+        failures.push(response);
+    }
+    let mut mime = reply(page(patient, correlation, 0, 0));
+    mime.content_type = "application/jsonp";
+    failures.push(mime);
+    let mut omitted = reply(page(patient, correlation, 0, 0));
+    omitted.correlation = CorrelationHeader::Omit;
+    failures.push(omitted);
+    let mut wrong_header = reply(page(patient, correlation, 0, 0));
+    wrong_header.correlation = CorrelationHeader::Value(Uuid::new_v4().to_string());
+    failures.push(wrong_header);
+    failures.push(reply(page(patient, Uuid::new_v4(), 0, 0)));
+    let mut wrong_code = page(patient, correlation, 0, 0);
+    wrong_code["code"] = json!("OTHER_CODE");
+    failures.push(reply(wrong_code));
+    let mut false_success = page(patient, correlation, 0, 0);
+    false_success["success"] = json!(false);
+    failures.push(reply(false_success));
+    let mut old_array = page(patient, correlation, 0, 0);
+    old_array["data"] = json!([]);
+    failures.push(reply(old_array));
+    for field in ["items", "total", "page", "size"] {
+        let mut missing = page(patient, correlation, 0, 0);
+        missing["data"].as_object_mut().unwrap().remove(field);
+        failures.push(reply(missing));
+    }
+    let mut malformed = reply(Value::Null);
+    malformed.body = b"{".to_vec();
+    failures.push(malformed);
+    let mut oversized = page(patient, correlation, 0, 0);
+    oversized["padding"] = json!("x".repeat(1024 * 1024));
+    failures.push(reply(oversized));
+    for response in failures {
+        let fixture = HttpFixture::start(vec![response]).await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_patient_id(patient, &access(), correlation)
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            ReasonCode::IntegrationFailure
+        );
+        assert_eq!(fixture.observed().await.len(), 1);
+    }
+}
+
