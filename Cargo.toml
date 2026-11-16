@@ -48,3 +48,7 @@ path = "tests/contracts.rs"
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
+
+[[test]]
+name = "avaliacao_reference_http"
+path = "tests/avaliacao_reference_http.rs"
