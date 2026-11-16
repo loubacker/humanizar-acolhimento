@@ -296,3 +296,19 @@ async fn reads_all_pages_in_order_without_filtering_modes_states_or_nullable_tit
     }
 }
 
+#[tokio::test]
+async fn zero_total_returns_an_empty_array_after_one_valid_page() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let fixture = HttpFixture::start(vec![reply(page(patient, correlation, 0, 0))]).await;
+    assert!(
+        fixture
+            .adapter
+            .find_by_patient_id(patient, &access(), correlation)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(fixture.observed().await.len(), 1);
+}
+
