@@ -414,3 +414,26 @@ async fn only_the_exact_structured_detail_not_found_is_absence() {
     );
 }
 
+#[tokio::test]
+async fn a_failure_after_a_valid_first_page_never_returns_partial_data_or_retries() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    for status in [StatusCode::INTERNAL_SERVER_ERROR, StatusCode::NOT_FOUND] {
+        let mut second = reply(missing(correlation));
+        second.status = status;
+        let fixture =
+            HttpFixture::start(vec![reply(page(patient, correlation, 0, 21)), second]).await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_patient_id(patient, &access(), correlation)
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            ReasonCode::IntegrationFailure
+        );
+        assert_eq!(fixture.observed().await.len(), 2);
+    }
+}
+
