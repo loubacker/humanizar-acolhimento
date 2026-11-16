@@ -359,3 +359,58 @@ async fn detail_sends_patient_context_and_validates_both_returned_ids() {
     }
 }
 
+#[tokio::test]
+async fn only_the_exact_structured_detail_not_found_is_absence() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let id = Uuid::from_u128(1);
+    let mut valid = reply(missing(correlation));
+    valid.status = StatusCode::NOT_FOUND;
+    let fixture = HttpFixture::start(vec![valid]).await;
+    assert!(
+        fixture
+            .adapter
+            .find_by_id(patient, id, &access(), correlation)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let mut route_error = missing(correlation);
+    route_error["reasonCode"] = json!("ROUTE_NOT_FOUND");
+    let mut wrong_status = missing(correlation);
+    wrong_status["status"] = json!(200);
+    for body in [
+        route_error,
+        wrong_status,
+        missing(Uuid::new_v4()),
+        json!({}),
+    ] {
+        let mut response = reply(body);
+        response.status = StatusCode::NOT_FOUND;
+        let fixture = HttpFixture::start(vec![response]).await;
+        assert_eq!(
+            fixture
+                .adapter
+                .find_by_id(patient, id, &access(), correlation)
+                .await
+                .err()
+                .unwrap()
+                .reason_code(),
+            ReasonCode::IntegrationFailure
+        );
+    }
+    let mut response = reply(missing(correlation));
+    response.status = StatusCode::NOT_FOUND;
+    let fixture = HttpFixture::start(vec![response]).await;
+    assert_eq!(
+        fixture
+            .adapter
+            .find_by_patient_id(patient, &access(), correlation)
+            .await
+            .err()
+            .unwrap()
+            .reason_code(),
+        ReasonCode::IntegrationFailure
+    );
+}
+
