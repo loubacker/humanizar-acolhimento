@@ -8,6 +8,7 @@ use crate::domain::model::{AvaliacaoPacienteReference, DelegatedAccess};
 pub trait AvaliacaoPacienteReferencePort: Send + Sync {
     async fn find_by_id(
         &self,
+        patient_id: Uuid,
         id: Uuid,
         access: &DelegatedAccess,
         correlation_id: Uuid,
