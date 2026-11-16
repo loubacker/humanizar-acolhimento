@@ -44,7 +44,12 @@ impl AcolhimentoAvaliacaoService {
             .map(|item| async move {
                 let canonical = self
                     .reference_port
-                    .find_by_id(item.avaliacao_paciente_id(), access, correlation_id)
+                    .find_by_id(
+                        patient_id,
+                        item.avaliacao_paciente_id(),
+                        access,
+                        correlation_id,
+                    )
                     .await?
                     .ok_or_else(|| {
                         AcolhimentoException::new(ReasonCode::AvaliacaoPacienteNotFound)
@@ -104,7 +109,7 @@ impl AcolhimentoAvaliacaoService {
         }
         let canonical = self
             .reference_port
-            .find_by_id(avaliacao_paciente_id, access, correlation_id)
+            .find_by_id(patient_id, avaliacao_paciente_id, access, correlation_id)
             .await?
             .ok_or_else(|| AcolhimentoException::new(ReasonCode::AvaliacaoPacienteNotFound))?;
         if canonical.id != avaliacao_paciente_id {
