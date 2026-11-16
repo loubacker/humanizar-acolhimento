@@ -580,3 +580,51 @@ async fn authorization_failures_preserve_their_public_meaning_without_retry() {
     }
 }
 
+#[tokio::test]
+async fn dependency_diagnostics_include_bounded_context_without_bearer_or_clinical_data() {
+    let patient = Uuid::new_v4();
+    let correlation = Uuid::new_v4();
+    let bearer_sentinel = "SYNTHETIC_BEARER_MUST_NOT_APPEAR";
+    let clinical_sentinel = "SYNTHETIC_CLINICAL_CONTENT_MUST_NOT_APPEAR";
+    let captured = diagnostic_capture(correlation);
+    let mut second = page(patient, correlation, 1, 21);
+    second["data"]["total"] = json!(clinical_sentinel);
+    let fixture = HttpFixture::start(vec![
+        reply(page(patient, correlation, 0, 21)),
+        reply(second),
+    ])
+    .await;
+    let result = fixture
+        .adapter
+        .find_by_patient_id(
+            patient,
+            &DelegatedAccess::new(bearer_sentinel.to_owned()),
+            correlation,
+        )
+        .await;
+    assert_eq!(
+        result.err().unwrap().reason_code(),
+        ReasonCode::IntegrationFailure
+    );
+    let all_events = captured.lock().unwrap();
+    let correlation_value = correlation.to_string();
+    let events: Vec<_> = all_events
+        .iter()
+        .filter(|event| event.get("correlation_id") == Some(&correlation_value))
+        .collect();
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(event["operation"], "find_by_patient_id");
+    assert_eq!(event["phase"], "response_json");
+    assert_eq!(event["outcome"], "failed");
+    assert_eq!(event["page"], "1");
+    assert_eq!(event["remote_status"], "200");
+    assert_eq!(event["correlation_id"], correlation.to_string());
+    assert_eq!(event["reason_code"], "INTEGRATION_FAILURE");
+    assert!(event["duration_ms"].parse::<u128>().unwrap() < 15000);
+    let diagnostics = format!("{events:?}");
+    assert!(!diagnostics.contains(bearer_sentinel));
+    assert!(!diagnostics.contains(clinical_sentinel));
+    assert!(!diagnostics.contains("/api/avaliacao/"));
+}
+
