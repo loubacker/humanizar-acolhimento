@@ -32,9 +32,11 @@ impl AvaliacaoPacienteSettings {
         Ok(Self { base_url })
     }
 
-    pub(crate) fn endpoint(&self, id: uuid::Uuid) -> Url {
+    pub(crate) fn endpoint(&self, patient_id: uuid::Uuid, id: uuid::Uuid) -> Url {
         let mut url = self.base_url.clone();
         url.set_path(&format!("/api/avaliacao/pacientes/{id}"));
+        url.query_pairs_mut()
+            .append_pair("patientId", &patient_id.to_string());
         url
     }
 
