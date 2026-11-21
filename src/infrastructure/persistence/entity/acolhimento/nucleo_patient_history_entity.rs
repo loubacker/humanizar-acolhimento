@@ -2,6 +2,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub(crate) struct NucleoPatientHistoryEntity {
     pub id: Uuid,
     pub nucleo_id: Uuid,
