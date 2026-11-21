@@ -1371,6 +1371,7 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
     assert_eq!(row.get::<_, i64>("links"), 0);
     assert_eq!(row.get::<_, i64>("events"), 2);
     verify_periods(&router, &database, &admin, &ordinary, &references, actor).await;
+    verify_history_cache(&router, &database, &admin).await;
     task.abort();
 }
 
@@ -1640,6 +1641,79 @@ async fn period_request(
     }
     let response = router.clone().oneshot(value).await.unwrap();
     (response.status(), json_body(response).await)
+}
+
+async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str) {
+    let other_pool = database().await;
+    let _listener = other_pool.start_history_cache();
+    let (peer, peer_token, ordinary, _, _, peer_fixture, _, _) = router(other_pool).await;
+    let patient = Uuid::new_v4();
+    let period = Uuid::new_v4();
+    let other_patient = Uuid::new_v4();
+    let other_period = Uuid::new_v4();
+    let staff = Uuid::new_v4();
+    let mut sql = pool.acquire().await.unwrap();
+    for (owner, id) in [(patient, period), (other_patient, other_period)] {
+        sql.execute(
+            "INSERT INTO nucleo_patient (id, patient_id, nucleo_id, desvinculado_at, desvinculado_por, desvinculo_operation_id)
+             VALUES ($1, $2, $3, now(), $4, $5)",
+            &[&id, &owner, &Uuid::new_v4(), &Uuid::new_v4(), &Uuid::new_v4()],
+        )
+        .await
+        .unwrap();
+    }
+    sql.execute(
+        "INSERT INTO nucleo_patient_staff (id, nucleo_patient_id, staff_user_id, role) VALUES ($1, $2, $3, $4)",
+        &[&staff, &period, &Uuid::new_v4(), &"COORDENADOR"],
+    )
+    .await
+    .unwrap();
+
+    let page = format!("/api/v1/acolhimento/paciente/{patient}/historico");
+    let detail = format!("{page}/{period}");
+    let other_detail =
+        format!("/api/v1/acolhimento/paciente/{other_patient}/historico/{other_period}");
+    let paths = [&page, &detail, &other_detail];
+
+    tokio::time::timeout(std::time::Duration::from_secs(12), async {
+        loop {
+            for (app, authorization) in [(first, token), (&peer, peer_token.as_str())] {
+                for path in paths {
+                    history_response(app, authorization, path).await;
+                }
+            }
+
+            let lock = sql.transaction().await.unwrap();
+            lock.batch_execute(
+                "LOCK TABLE nucleo_patient, nucleo_patient_staff IN ACCESS EXCLUSIVE MODE",
+            )
+            .await
+            .unwrap();
+            let hits = tokio::time::timeout(std::time::Duration::from_millis(750), async {
+                for (app, authorization) in [(first, token), (&peer, peer_token.as_str())] {
+                    for path in paths {
+                        history_response(app, authorization, path).await;
+                    }
+                }
+            })
+            .await;
+            lock.rollback().await.unwrap();
+            if hits.is_ok() {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("as duas instâncias devem responder pelas entradas em cache");
+
+    peer_fixture.abort();
+}
+
+async fn history_response(router: &Router, token: &str, path: &str) -> Value {
+    let (status, body) =
+        period_request(router, "GET", path, token, Value::Null, Uuid::new_v4()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["data"].clone()
 }
 
 async fn verify_periods(
