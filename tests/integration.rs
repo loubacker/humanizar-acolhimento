@@ -1715,6 +1715,16 @@ async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str
         .await
         .unwrap();
     transaction.rollback().await.unwrap();
+    let (denied, _) = period_request(
+        &peer,
+        "GET",
+        &detail,
+        &ordinary,
+        Value::Null,
+        Uuid::new_v4(),
+    )
+    .await;
+    assert_eq!(denied, StatusCode::FORBIDDEN);
     let previous = history_response(&peer, &peer_token, &detail).await;
     assert_eq!(previous["responsaveis"][0]["role"], "COORDENADOR");
 
