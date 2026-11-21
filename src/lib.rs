@@ -267,6 +267,10 @@ pub mod application {
 
 // ===== Infrastructure =====
 pub mod infrastructure {
+    pub mod cache {
+        pub mod cadastral_cache;
+    }
+
     pub mod server;
 
     pub use adapter::AvaliacaoPacienteReferenceAdapter;

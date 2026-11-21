@@ -30,6 +30,7 @@ pub async fn run() -> Result<(), TechnicalError> {
         .await
         .map_err(|error| TechnicalError::with_source("Falha ao iniciar listener HTTP", error))?;
     let runtime = RabbitRuntime::start(database.clone(), messaging_settings).await?;
+    let _history_listener = database.start_history_cache();
     let state = ApplicationState::from_database(
         database,
         runtime.readiness(),
