@@ -216,6 +216,9 @@ Os scripts transacionais são aplicados em ordem, sem execução automática no 
 | [`migrations/0003_acolhimento_operations.sql`](migrations/0003_acolhimento_operations.sql) | Registro das intenções e resultados das mutações |
 | [`migrations/0004_avaliacao_titulo_nullable.sql`](migrations/0004_avaliacao_titulo_nullable.sql) | Permite vincular avaliação que ainda não possui título |
 | [`migrations/0005_nucleo_patient_periodos.sql`](migrations/0005_nucleo_patient_periodos.sql) | Conserva períodos encerrados, equipe e anamnese e garante um vínculo ativo por paciente/núcleo |
+| [`migrations/0006_history_cache_invalidation.sql`](migrations/0006_history_cache_invalidation.sql) | Invalida o histórico em cache de cada paciente quando há mudanças nos períodos ou na equipe |
+
+As consultas administrativas de histórico reutilizam por até sete dias as páginas e os detalhes de períodos encerrados. Aplique a migração 0006 após a 0005. Cada instância usa uma conexão PostgreSQL dedicada a `LISTEN` e volta a consultar o banco diretamente se a conexão cair.
 
 ## Como Executar Localmente
 
