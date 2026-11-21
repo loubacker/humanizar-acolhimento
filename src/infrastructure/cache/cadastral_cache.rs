@@ -121,3 +121,141 @@ impl CadastralCacheState {
     }
 
 }
+
+#[derive(Clone)]
+struct CacheEntry<V> {
+    value: V,
+    expires_at: Instant,
+}
+
+type ScopeOf<K> = Arc<dyn Fn(&K) -> Uuid + Send + Sync>;
+
+#[derive(Clone)]
+pub struct CadastralCache<K, V> {
+    state: Arc<CadastralCacheState>,
+    scope_of: Option<ScopeOf<K>>,
+    entries: Cache<(u64, K), CacheEntry<V>>,
+}
+
+impl<K, V> CadastralCache<K, V>
+where
+    K: Clone + Eq + Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    pub fn new(
+        state: Arc<CadastralCacheState>,
+        capacity: u64,
+        weight: impl Fn(&K, &V) -> u32 + Send + Sync + 'static,
+    ) -> Self {
+        Self::build(state, capacity, None, weight)
+    }
+
+    pub fn new_scoped(
+        state: Arc<CadastralCacheState>,
+        capacity: u64,
+        scope_of: impl Fn(&K) -> Uuid + Send + Sync + 'static,
+        weight: impl Fn(&K, &V) -> u32 + Send + Sync + 'static,
+    ) -> Self {
+        Self::build(state, capacity, Some(Arc::new(scope_of)), weight)
+    }
+
+    fn build(
+        state: Arc<CadastralCacheState>,
+        capacity: u64,
+        scope_of: Option<ScopeOf<K>>,
+        weight: impl Fn(&K, &V) -> u32 + Send + Sync + 'static,
+    ) -> Self {
+        let entries = Cache::<(u64, K), CacheEntry<V>>::builder()
+            .max_capacity(capacity)
+            .weigher(move |(_, key), value| {
+                weight(key, &value.value).saturating_add(ENTRY_OVERHEAD)
+            })
+            .time_to_live(CACHE_TTL)
+            .build();
+        let invalidation = entries.clone();
+        let measurement = entries.clone();
+        state
+            .observers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(CacheObserver {
+                clear: Box::new(move || invalidation.invalidate_all()),
+                weighted_size: Box::new(move || measurement.weighted_size()),
+            });
+
+        Self {
+            state,
+            scope_of,
+            entries,
+        }
+    }
+
+    pub fn generation(&self) -> Option<u64> {
+        let generation = self.state.generation();
+        if generation.is_none() {
+            self.state.bypasses.fetch_add(1, Ordering::Relaxed);
+        }
+
+        generation
+    }
+
+    pub async fn get_or_load<E>(
+        &self,
+        key: K,
+        load: impl Future<Output = Result<V, E>>,
+    ) -> Result<V, E> {
+        let Some(generation) = self.generation() else {
+            return load.await;
+        };
+        if let Some(value) = self.get(generation, &key).await {
+            return Ok(value);
+        }
+
+        let value = load.await?;
+        self.insert(generation, key, value.clone()).await;
+        Ok(value)
+    }
+
+    pub async fn get(&self, generation: u64, key: &K) -> Option<V> {
+        let scope = self.scope_of.as_ref().map(|scope_of| scope_of(key));
+        let stamp = self.state.stamp(generation, scope)?;
+        let value = self
+            .entries
+            .get(&(stamp, key.clone()))
+            .await
+            .filter(|entry| Instant::now() < entry.expires_at)
+            .map(|entry| entry.value);
+        if self.state.generation() == Some(generation) && value.is_some() {
+            self.state.hits.fetch_add(1, Ordering::Relaxed);
+            return value;
+        }
+
+        self.state.misses.fetch_add(1, Ordering::Relaxed);
+        None
+    }
+
+    pub async fn insert(&self, generation: u64, key: K, value: V) {
+        let scope = self.scope_of.as_ref().map(|scope_of| scope_of(&key));
+        let Some(stamp) = self.state.stamp(generation, scope) else {
+            return;
+        };
+
+        let key = (stamp, key);
+        self.entries
+            .insert(
+                key.clone(),
+                CacheEntry {
+                    value,
+                    expires_at: Instant::now() + CACHE_TTL,
+                },
+            )
+            .await;
+        let latest = self
+            .state
+            .generation()
+            .and_then(|generation| self.state.stamp(generation, scope));
+        if latest != Some(stamp) {
+            self.entries.invalidate(&key).await;
+        }
+    }
+}
