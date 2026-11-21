@@ -577,7 +577,11 @@ async fn postgres_http_keeps_patient_data_atomic_and_authorized() {
         .get(0);
     assert_eq!(before_upgrade, after_upgrade);
     assert_eq!(before_staff, after_staff);
+    let cache_migration = include_str!("../migrations/0006_history_cache_invalidation.sql");
+    client.batch_execute(cache_migration).await.unwrap();
+    client.batch_execute(cache_migration).await.unwrap();
     drop(client);
+    let _history_listener = database.start_history_cache();
     let (router, admin, ordinary, other_admin, actor, task, references, observed_tokens) =
         router(database.clone()).await;
     let correlation = Uuid::new_v4();
