@@ -1728,6 +1728,27 @@ async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str
     let previous = history_response(&peer, &peer_token, &detail).await;
     assert_eq!(previous["responsaveis"][0]["role"], "COORDENADOR");
 
+    sql.execute(
+        "UPDATE nucleo_patient_staff SET role='PROFISSIONAL' WHERE id=$1",
+        &[&staff],
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(6), async {
+        loop {
+            let first_detail = history_response(first, token, &detail).await;
+            let peer_page = history_response(&peer, &peer_token, &page).await;
+            if first_detail["responsaveis"][0]["role"] == "PROFISSIONAL"
+                && peer_page["content"][0]["responsaveis"][0]["role"] == "PROFISSIONAL"
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+        }
+    })
+    .await
+    .expect("alteração de equipe deve invalidar lista e detalhe");
+
     peer_fixture.abort();
 }
 
