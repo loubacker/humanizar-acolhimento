@@ -1,3 +1,4 @@
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::domain::exception::AcolhimentoException;
@@ -160,5 +161,42 @@ impl NucleoPatientHistoryRepository {
             .map(NucleoPatientStaffEntity::from_row)
             .collect::<Result<Vec<_>, _>>()
             .map_err(database_error)
+    }
+}
+
+fn history_weight((periods, staff, _): &HistoryRows) -> u32 {
+    let clinical = periods
+        .iter()
+        .filter_map(|period| period.anamnese.as_ref())
+        .map(json_heap_bytes)
+        .sum::<usize>();
+    let roles = staff
+        .iter()
+        .map(|member| member.role.capacity())
+        .sum::<usize>();
+    let bytes = size_of::<HistoryRows>()
+        + periods.capacity() * size_of::<NucleoPatientHistoryEntity>()
+        + staff.capacity() * size_of::<NucleoPatientStaffEntity>()
+        + clinical
+        + roles;
+    u32::try_from(bytes).unwrap_or(u32::MAX)
+}
+
+fn json_heap_bytes(value: &Value) -> usize {
+    match value {
+        Value::String(text) => text.capacity(),
+        Value::Array(items) => {
+            items.capacity() * size_of::<Value>() + items.iter().map(json_heap_bytes).sum::<usize>()
+        }
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(key, value)| {
+                size_of::<(String, Value)>()
+                    + size_of::<usize>() * 4
+                    + key.capacity()
+                    + json_heap_bytes(value)
+            })
+            .sum(),
+        Value::Null | Value::Bool(_) | Value::Number(_) => 0,
     }
 }
