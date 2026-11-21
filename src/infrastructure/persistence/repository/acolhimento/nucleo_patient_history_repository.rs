@@ -20,6 +20,7 @@ type HistoryRows = (
 pub(crate) struct NucleoPatientHistoryRepository {
     database: DatabaseConfig,
     pages: CadastralCache<(Uuid, u32, u32), HistoryRows>,
+    details: CadastralCache<(Uuid, Uuid), HistoryRows>,
 }
 
 impl NucleoPatientHistoryRepository {
@@ -30,9 +31,16 @@ impl NucleoPatientHistoryRepository {
             |key: &(Uuid, u32, u32)| key.0,
             |_, data| history_weight(data),
         );
+        let details = CadastralCache::new_scoped(
+            database.history_cache_state.clone(),
+            RECORDS_CAPACITY,
+            |key: &(Uuid, Uuid)| key.0,
+            |_, data| history_weight(data),
+        );
         Self {
             database,
             pages,
+            details,
         }
     }
 
@@ -121,6 +129,28 @@ impl NucleoPatientHistoryRepository {
     }
 
     pub async fn detail(
+        &self,
+        patient_id: Uuid,
+        id: Uuid,
+    ) -> Result<HistoryRows, AcolhimentoException> {
+        let key = (patient_id, id);
+        let generation = self.details.generation();
+        if let Some(generation) = generation
+            && let Some(data) = self.details.get(generation, &key).await
+        {
+            return Ok(data);
+        }
+
+        let data = self.load_detail(patient_id, id).await?;
+        if !data.0.is_empty()
+            && let Some(generation) = generation
+        {
+            self.details.insert(generation, key, data.clone()).await;
+        }
+        Ok(data)
+    }
+
+    async fn load_detail(
         &self,
         patient_id: Uuid,
         id: Uuid,
