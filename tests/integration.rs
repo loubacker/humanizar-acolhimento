@@ -1749,6 +1749,18 @@ async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str
     .await
     .expect("alteração de equipe deve invalidar lista e detalhe");
 
+    let lock = sql.transaction().await.unwrap();
+    lock.batch_execute("LOCK TABLE nucleo_patient, nucleo_patient_staff IN ACCESS EXCLUSIVE MODE")
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        history_response(&peer, &peer_token, &other_detail),
+    )
+    .await
+    .expect("o histórico do outro paciente deve continuar em cache");
+    lock.rollback().await.unwrap();
+
     peer_fixture.abort();
 }
 
