@@ -19,6 +19,7 @@ const GENERATION_STEP: u64 = 2;
 const CONNECTION_DEADLINE: Duration = Duration::from_secs(5);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
+const METRICS_INTERVAL: Duration = Duration::from_secs(60);
 const ENTRY_OVERHEAD: u32 = 64;
 const MAX_SCOPES: usize = 4096;
 const MIGRATION_CHECK: &str = "
@@ -211,6 +212,7 @@ impl CadastralCacheState {
 
             self.connect();
             tracing::info!(channel, "Cache de leitura conectado");
+            let mut last_metrics = tokio::time::Instant::now();
             loop {
                 tokio::time::sleep(HEARTBEAT_INTERVAL).await;
                 let result = tokio::time::timeout(
@@ -224,6 +226,10 @@ impl CadastralCacheState {
                     _ => return "LISTENER_HEARTBEAT_UNAVAILABLE",
                 }
 
+                if last_metrics.elapsed() >= METRICS_INTERVAL {
+                    self.log_metrics(channel);
+                    last_metrics = tokio::time::Instant::now();
+                }
             }
         };
 
@@ -233,6 +239,26 @@ impl CadastralCacheState {
         }
     }
 
+    fn log_metrics(&self, channel: &'static str) {
+        let observers = self
+            .observers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let weighted_bytes: u64 = observers
+            .iter()
+            .map(|observer| (observer.weighted_size)())
+            .sum();
+
+        tracing::debug!(
+            channel,
+            hits = self.hits.load(Ordering::Relaxed),
+            misses = self.misses.load(Ordering::Relaxed),
+            bypasses = self.bypasses.load(Ordering::Relaxed),
+            invalidations = self.invalidations.load(Ordering::Relaxed),
+            weighted_bytes,
+            "Métricas do cache de leitura"
+        );
+    }
 }
 
 struct ListenerAvailability<'a>(&'a CadastralCacheState);
