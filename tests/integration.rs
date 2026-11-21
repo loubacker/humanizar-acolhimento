@@ -1706,6 +1706,18 @@ async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str
     .await
     .expect("as duas instâncias devem responder pelas entradas em cache");
 
+    let transaction = sql.transaction().await.unwrap();
+    transaction
+        .execute(
+            "UPDATE nucleo_patient_staff SET role='PROFISSIONAL' WHERE id=$1",
+            &[&staff],
+        )
+        .await
+        .unwrap();
+    transaction.rollback().await.unwrap();
+    let previous = history_response(&peer, &peer_token, &detail).await;
+    assert_eq!(previous["responsaveis"][0]["role"], "COORDENADOR");
+
     peer_fixture.abort();
 }
 
