@@ -19,7 +19,6 @@ const GENERATION_STEP: u64 = 2;
 const CONNECTION_DEADLINE: Duration = Duration::from_secs(5);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
-const METRICS_INTERVAL: Duration = Duration::from_secs(60);
 const ENTRY_OVERHEAD: u32 = 64;
 const MAX_SCOPES: usize = 4096;
 const MIGRATION_CHECK: &str = "
@@ -115,11 +114,151 @@ impl CadastralCacheState {
         }))
     }
 
+    pub fn start(
+        self: Arc<Self>,
+        config: Config,
+        channel: &'static str,
+        expected_triggers: i64,
+    ) -> CadastralCacheListener {
+        let state = Arc::clone(&self);
+        let task = tokio::spawn(async move {
+            let _availability = ListenerAvailability(&state);
+            loop {
+                let reason = state.listen(&config, channel, expected_triggers).await;
+                state.disconnect();
+                tracing::warn!(channel, reason, "Cache de leitura em leitura direta");
+                tokio::time::sleep(RECONNECT_INTERVAL).await;
+            }
+        });
+
+        CadastralCacheListener { state: self, task }
+    }
+
     pub fn generation(&self) -> Option<u64> {
         let generation = self.generation.load(Ordering::Acquire);
         (generation & DISCONNECTED == 0).then_some(generation)
     }
 
+    fn connect(&self) {
+        self.invalidate();
+        self.generation.fetch_and(!DISCONNECTED, Ordering::Release);
+    }
+
+    fn disconnect(&self) {
+        let previous = self.generation.fetch_or(DISCONNECTED, Ordering::AcqRel);
+        if previous & DISCONNECTED == 0 {
+            self.invalidate();
+        }
+    }
+
+    async fn listen(
+        &self,
+        config: &Config,
+        channel: &'static str,
+        expected_triggers: i64,
+    ) -> &'static str {
+        if channel.is_empty()
+            || !channel
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+        {
+            return "INVALID_LISTEN_CHANNEL";
+        }
+
+        let Ok(Ok((client, mut connection))) =
+            tokio::time::timeout(CONNECTION_DEADLINE, config.connect(NoTls)).await
+        else {
+            return "LISTENER_CONNECTION_UNAVAILABLE";
+        };
+
+        let driver = async {
+            while let Some(message) = poll_fn(|context| connection.poll_message(context)).await {
+                match message {
+                    Ok(AsyncMessage::Notification(notification))
+                        if notification.channel() == channel =>
+                    {
+                        match Uuid::parse_str(notification.payload()) {
+                            Ok(scope) => self.invalidate_scope(scope),
+                            Err(_) => self.invalidate(),
+                        }
+                    }
+                    Err(_) => return "LISTENER_CONNECTION_LOST",
+                    _ => {}
+                }
+            }
+
+            "LISTENER_CONNECTION_CLOSED"
+        };
+
+        let subscription = async {
+            let setup = async {
+                let migration = client
+                    .query_one(MIGRATION_CHECK, &[&expected_triggers])
+                    .await?;
+                if !migration.try_get::<_, bool>(0)? {
+                    return Ok::<_, tokio_postgres::Error>(false);
+                }
+
+                client.batch_execute(&format!("LISTEN {channel}")).await?;
+                Ok(true)
+            };
+
+            match tokio::time::timeout(CONNECTION_DEADLINE, setup).await {
+                Ok(Ok(true)) => {}
+                Ok(Ok(false)) => return "LISTENER_MIGRATION_PENDING",
+                _ => return "LISTENER_SUBSCRIPTION_UNAVAILABLE",
+            }
+
+            self.connect();
+            tracing::info!(channel, "Cache de leitura conectado");
+            loop {
+                tokio::time::sleep(HEARTBEAT_INTERVAL).await;
+                let result = tokio::time::timeout(
+                    CONNECTION_DEADLINE,
+                    client.query_one(MIGRATION_CHECK, &[&expected_triggers]),
+                )
+                .await;
+                match result {
+                    Ok(Ok(row)) if matches!(row.try_get::<_, bool>(0), Ok(true)) => {}
+                    Ok(Ok(_)) => return "LISTENER_MIGRATION_PENDING",
+                    _ => return "LISTENER_HEARTBEAT_UNAVAILABLE",
+                }
+
+            }
+        };
+
+        tokio::select! {
+            reason = driver => reason,
+            reason = subscription => reason,
+        }
+    }
+
+}
+
+struct ListenerAvailability<'a>(&'a CadastralCacheState);
+
+impl Drop for ListenerAvailability<'_> {
+    fn drop(&mut self) {
+        self.0.disconnect();
+    }
+}
+
+pub struct CadastralCacheListener {
+    state: Arc<CadastralCacheState>,
+    task: JoinHandle<()>,
+}
+
+impl CadastralCacheListener {
+    pub fn generation(&self) -> Option<u64> {
+        self.state.generation()
+    }
+}
+
+impl Drop for CadastralCacheListener {
+    fn drop(&mut self) {
+        self.task.abort();
+        self.state.disconnect();
+    }
 }
 
 #[derive(Clone)]
