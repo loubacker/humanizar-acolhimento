@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use bb8_postgres::PostgresConnectionManager;
@@ -6,6 +7,7 @@ use tokio_postgres::{Config as PostgresConfig, NoTls};
 use url::Url;
 
 use crate::domain::exception::{PersistenceException, TechnicalError};
+use crate::infrastructure::cache::cadastral_cache::{CadastralCacheListener, CadastralCacheState};
 use crate::infrastructure::diagnostics::SafeUrl;
 
 use super::EnvironmentConfig;
@@ -165,6 +167,8 @@ impl DatabaseSettings {
 #[derive(Clone)]
 pub struct DatabaseConfig {
     pool: Pool<Manager>,
+    listener_config: PostgresConfig,
+    pub(crate) history_cache_state: Arc<CadastralCacheState>,
 }
 
 impl DatabaseConfig {
@@ -185,7 +189,8 @@ impl DatabaseConfig {
             "Inicializando o pool PostgreSQL"
         );
 
-        let manager = PostgresConnectionManager::new(settings.postgres_config()?, NoTls);
+        let listener_config = settings.postgres_config()?;
+        let manager = PostgresConnectionManager::new(listener_config.clone(), NoTls);
         let pool = Pool::builder()
             .min_idle(Some(settings.minimum_idle))
             .max_size(settings.maximum_pool_size)
@@ -213,7 +218,19 @@ impl DatabaseConfig {
             "Pool PostgreSQL inicializado"
         );
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            listener_config,
+            history_cache_state: CadastralCacheState::new(),
+        })
+    }
+
+    pub fn start_history_cache(&self) -> CadastralCacheListener {
+        self.history_cache_state.clone().start(
+            self.listener_config.clone(),
+            "humanizar_acolhimento_history_cache",
+            4,
+        )
     }
 
     pub async fn acquire(&self) -> Result<PooledConnection<'_, Manager>, PersistenceException> {
