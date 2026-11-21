@@ -1761,6 +1761,37 @@ async fn verify_history_cache(first: &Router, pool: &DatabaseConfig, token: &str
     .expect("o histórico do outro paciente deve continuar em cache");
     lock.rollback().await.unwrap();
 
+    let reassigned = Uuid::new_v4();
+    sql.execute(
+        "UPDATE nucleo_patient SET patient_id=$1 WHERE id=$2",
+        &[&reassigned, &period],
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(6), async {
+        loop {
+            let (status, _) = period_request(
+                &peer,
+                "GET",
+                &detail,
+                &peer_token,
+                Value::Null,
+                Uuid::new_v4(),
+            )
+            .await;
+            if status == StatusCode::NOT_FOUND {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+        }
+    })
+    .await
+    .expect("o proprietário anterior deve ser invalidado");
+    let new_detail = format!("/api/v1/acolhimento/paciente/{reassigned}/historico/{period}");
+    assert_eq!(
+        history_response(&peer, &peer_token, &new_detail).await["nucleoPatientId"],
+        period.to_string()
+    );
     peer_fixture.abort();
 }
 
