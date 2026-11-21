@@ -96,7 +96,7 @@ impl NucleoPatientRepository {
         Self::lock_patient(&transaction, patient_id).await?;
         Self::verify_snapshot(&transaction, patient_id, expected_nucleos, expected_staff).await?;
         let desired_ids: Vec<Uuid> = entries.iter().map(|(nucleo, _)| nucleo.id).collect();
-        transaction
+        let closed_periods = transaction
             .execute(
                 r#"
                 UPDATE nucleo_patient
@@ -205,6 +205,11 @@ impl NucleoPatientRepository {
         Self::insert_outbox_events(&transaction, outbox_events).await?;
         AcolhimentoOperationRepository::complete(&transaction, operation).await?;
         transaction.commit().await.map_err(database_error)?;
+        if closed_periods > 0 {
+            self.database
+                .history_cache_state
+                .invalidate_scope(patient_id);
+        }
         Ok(saved_entries)
     }
 
