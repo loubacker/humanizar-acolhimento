@@ -324,7 +324,11 @@ impl NucleoPatientRepository {
         }
         Self::insert_outbox_events(&transaction, outbox_events).await?;
         AcolhimentoOperationRepository::complete(&transaction, operation).await?;
-        transaction.commit().await.map_err(database_error)
+        transaction.commit().await.map_err(database_error)?;
+        self.database
+            .history_cache_state
+            .invalidate_scope(patient_id);
+        Ok(())
     }
 
     pub async fn change_nucleo_anamnese(
