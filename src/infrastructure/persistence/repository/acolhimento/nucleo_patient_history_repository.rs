@@ -2,6 +2,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::domain::exception::AcolhimentoException;
+use crate::infrastructure::cache::cadastral_cache::{
+    CadastralCache, RECORDS_CAPACITY, SEARCH_CAPACITY,
+};
 use crate::infrastructure::config::DatabaseConfig;
 use crate::infrastructure::handler::database_error;
 use crate::infrastructure::persistence::entity::{
@@ -16,14 +19,38 @@ type HistoryRows = (
 
 pub(crate) struct NucleoPatientHistoryRepository {
     database: DatabaseConfig,
+    pages: CadastralCache<(Uuid, u32, u32), HistoryRows>,
 }
 
 impl NucleoPatientHistoryRepository {
     pub fn new(database: DatabaseConfig) -> Self {
-        Self { database }
+        let pages = CadastralCache::new_scoped(
+            database.history_cache_state.clone(),
+            SEARCH_CAPACITY,
+            |key: &(Uuid, u32, u32)| key.0,
+            |_, data| history_weight(data),
+        );
+        Self {
+            database,
+            pages,
+        }
     }
 
     pub async fn list(
+        &self,
+        patient_id: Uuid,
+        page: u32,
+        size: u32,
+    ) -> Result<HistoryRows, AcolhimentoException> {
+        self.pages
+            .get_or_load(
+                (patient_id, page, size),
+                self.load_page(patient_id, page, size),
+            )
+            .await
+    }
+
+    async fn load_page(
         &self,
         patient_id: Uuid,
         page: u32,
